@@ -28,4 +28,11 @@ class AgentState(BaseModel):
     next_agent: str = ""
     final_answer: str = ""
 
+    # Explore / Trusted context
+    mode: Literal["explore", "trusted"] = "explore"
+    theme: str = ""
+
+    # Quality Bar D payload
+    quality_payload: dict = Field(default_factory=dict)
+
     model_config = {"arbitrary_types_allowed": True}

@@ -1,11 +1,11 @@
 from langchain_core.messages import AIMessage
 from langchain_ollama import ChatOllama
-from langchain_community.utilities import SQLDatabase
-from langchain_community.tools.sql_database.tool import QuerySQLDatabaseTool
 
 from backend.app.agents.state import AgentState
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
+from backend.app.services.fabric_sql import fabric_is_available, get_fabric_schema_text, run_fabric_sql
+from backend.app.services.semantic_store import read_trusted_layer
 
 settings = get_settings()
 
@@ -13,54 +13,71 @@ llm = ChatOllama(
     base_url=settings.ollama_base_url,
     model=settings.ollama_model,
     temperature=0,
-    timeout=300,
+    timeout=settings.ollama_timeout,
 )
 
-# ── SQLDatabase Tool (ดึงค่าจาก .env ผ่าน config.py) ──
-db = SQLDatabase.from_uri(settings.database_url_sync)
-sql_tool = QuerySQLDatabaseTool(db=db)
+SYSTEM_PROMPT = """You are a Data Analyst on an AI Data Team connected to Microsoft Fabric Data Warehouse (T-SQL).
 
-SYSTEM_PROMPT = """You are a Data Analyst agent with DIRECT ACCESS to a PostgreSQL database.
-You CAN and MUST run SQL queries. NEVER claim you lack access.
+Theme: {theme}
+Mode: {mode}
 
-Your responsibilities:
-1. Convert natural language questions into SQL queries (Text-to-SQL)
-2. Run queries against the real database and analyze results
-3. Provide clear, business-friendly explanations
-
-Available database schema:
+Schema preview (Fabric):
 {db_schema}
 
-Additional context from Data Engineer:
-{schema_info}
+Trusted definitions (if any):
+{trusted_layer}
 
-IMPORTANT:
-- Generate ONLY SELECT queries (never INSERT, UPDATE, DELETE, DROP, etc.)
-- Use the PostgreSQL dialect
-- ALWAYS provide a concrete SQL query — do NOT just describe what you would do
-- Format your response as:
-  SQL: <your query>
-  ANALYSIS: <explanation of what the query does and expected insights>
+Rules:
+- Generate ONLY SELECT queries (T-SQL for Fabric/Synapse)
+- Respond in Thai for business explanation; keep SQL in English
+- ALWAYS include these sections:
+  SQL: <primary query>
+  ALT_SQL: <sanity check or alternative query>
+  ASSUMPTIONS:
+  - grain: ...
+  - filters: ...
+  CONFIDENCE: high|medium|low
+  UNKNOWNS:
+  - ...
+  QUESTIONS_FOR_BA_DA:
+  - ...
+  ANALYSIS: <Thai summary of insight — mark as Draft if mode=explore>
+
+User question context from Data Engineer (if any):
+{schema_info}
 """
 
 
-async def data_analyst_node(state: AgentState) -> dict:
-    """Data Analyst agent: generates SQL, runs it, and analyzes data patterns."""
-    logger.info("Data Analyst agent invoked for thread=%s", state.thread_id)
+def _extract_sql(text: str) -> str:
+    import re
 
-    # ── ดึง schema จริงจาก DB ──
-    try:
-        db_schema = db.get_table_info()
-        logger.info("Data Analyst DB introspection OK — tables: %s", db.get_usable_table_names())
-    except Exception as e:
-        logger.error("Data Analyst failed to introspect DB: %s", e)
-        db_schema = f"(schema introspection failed: {e})"
+    match = re.search(r"```sql\s*\n(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    if "SQL:" in text:
+        sql_part = text.split("SQL:")[-1]
+        for marker in ("ALT_SQL:", "ANALYSIS:", "ASSUMPTIONS:"):
+            if marker in sql_part:
+                sql_part = sql_part.split(marker)[0]
+        return sql_part.strip()
+    return ""
+
+
+async def data_analyst_node(state: AgentState) -> dict:
+    logger.info("Data Analyst agent invoked thread=%s mode=%s", state.thread_id, state.mode)
+
+    db_schema = get_fabric_schema_text() if fabric_is_available() else "(Fabric not configured)"
+    trusted = await read_trusted_layer()
+    trusted_text = str(trusted.get("metrics", []))[:1500]
 
     messages = [
         {
             "role": "system",
             "content": SYSTEM_PROMPT.format(
+                theme=state.theme or "ไม่ระบุ",
+                mode=state.mode,
                 db_schema=db_schema,
+                trusted_layer=trusted_text,
                 schema_info=state.schema_info,
             ),
         },
@@ -76,33 +93,14 @@ async def data_analyst_node(state: AgentState) -> dict:
         logger.error("Data Analyst LLM call failed: %s", e)
         content = f"Data Analyst error: {e}"
 
-    # ── Extract & Execute SQL ──
     sql = _extract_sql(content)
-    sql_result = ""
-
-    if sql:
-        logger.info("=" * 60)
-        logger.info("DATA ANALYST — Generated SQL Query:")
-        logger.info(sql)
-        logger.info("=" * 60)
-
-        # Safety check: only SELECT
-        if sql.strip().upper().startswith("SELECT"):
-            try:
-                sql_result = sql_tool.run(sql)
-                logger.info("SQL execution result (first 500 chars):\n%s", sql_result[:500])
-                content += f"\n\nQUERY_RESULT:\n{sql_result}"
-            except Exception as e:
-                logger.error("SQL execution failed: %s", e)
-                content += f"\n\nSQL_ERROR: {e}"
-                sql_result = f"Error: {e}"
-        else:
-            logger.warning("BLOCKED non-SELECT query: %s", sql[:100])
-            content += "\n\nSQL_ERROR: Only SELECT queries are allowed."
-    else:
-        logger.warning("Data Analyst did not produce a SQL query")
-
-    logger.info("Data Analyst completed. Generated SQL length: %d", len(sql))
+    if sql and fabric_is_available():
+        try:
+            result = run_fabric_sql(sql, mode=state.mode, max_rows=10)
+            content += f"\n\nQUERY_RESULT:\n{result.get('rows', [])}"
+        except Exception as e:
+            logger.error("Fabric SQL execution failed: %s", e)
+            content += f"\n\nSQL_ERROR: {e}"
 
     return {
         "messages": [AIMessage(content=content, name="data_analyst")],
@@ -110,23 +108,3 @@ async def data_analyst_node(state: AgentState) -> dict:
         "generated_sql": sql,
         "query_result": content,
     }
-
-
-def _extract_sql(text: str) -> str:
-    """Extract SQL from markdown code blocks or inline SQL: tags."""
-    import re
-
-    # Try ```sql ... ``` first
-    match = re.search(r"```sql\s*\n(.*?)```", text, re.DOTALL | re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
-
-    # Try SQL: tag
-    if "SQL:" in text:
-        sql_part = text.split("SQL:")[-1]
-        end_marker = "ANALYSIS:"
-        if end_marker in sql_part:
-            sql_part = sql_part.split(end_marker)[0]
-        return sql_part.strip()
-
-    return ""

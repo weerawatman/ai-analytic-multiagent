@@ -5,7 +5,9 @@ from backend.app.agents.orchestrator import graph
 from backend.app.agents.state import AgentState
 from backend.app.core.logger import logger
 from backend.app.schemas.chat import ChatRequest, ChatResponse
+from backend.app.schemas.backlog import BacklogItemResponse
 from backend.app.services import chat_store
+from backend.app.services.quality_assembly import save_quality_to_backlog
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -13,7 +15,12 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """Send a message to the AI Data Team."""
-    logger.info("Chat request: thread=%s message=%s...", request.thread_id, request.message[:80])
+    logger.info(
+        "Chat request: thread=%s mode=%s message=%s...",
+        request.thread_id,
+        request.mode,
+        request.message[:80],
+    )
 
     chat_store.add_message(
         request.thread_id,
@@ -27,6 +34,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
     input_state = AgentState(
         messages=[HumanMessage(content=request.message)],
         thread_id=request.thread_id,
+        mode=request.mode,
+        theme=request.theme or "",
     )
 
     try:
@@ -55,6 +64,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
         )
 
     answer = state.final_answer or "No response generated."
+    quality_payload = state.quality_payload or None
+    quality_gaps = quality_payload.get("quality_gaps") if quality_payload else None
+
     chat_store.add_message(
         request.thread_id,
         role="assistant",
@@ -69,4 +81,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
         agent=state.current_agent,
         content=answer,
         requires_approval=False,
+        quality_payload=quality_payload if quality_payload else None,
+        quality_gaps=quality_gaps,
     )
+
+
+@router.post("/save-candidate", response_model=BacklogItemResponse)
+async def save_candidate(payload: dict) -> BacklogItemResponse:
+    """Save quality payload to insight backlog (Quality Bar D)."""
+    try:
+        item = save_quality_to_backlog(payload)
+        return BacklogItemResponse(**item)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

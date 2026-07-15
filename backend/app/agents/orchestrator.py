@@ -5,7 +5,8 @@ from langgraph.graph import END, StateGraph
 
 from backend.app.agents.data_analyst import data_analyst_node
 from backend.app.agents.data_engineer import data_engineer_node
-from backend.app.agents.data_scientist import data_scientist_node
+from backend.app.agents.data_scientist import data_scientist_node, explore_critique_node
+from backend.app.agents.quality_node import quality_assembly_node
 from backend.app.agents.state import AgentState
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
@@ -16,7 +17,7 @@ router_llm = ChatOllama(
     base_url=settings.ollama_base_url,
     model=settings.ollama_model,
     temperature=0,
-    timeout=300,
+    timeout=settings.ollama_timeout,
 )
 
 ROUTER_PROMPT = """You are a routing agent for an AI Data Team. Based on the user's message,
@@ -34,7 +35,6 @@ User message: {message}"""
 
 
 async def route_node(state: AgentState) -> dict:
-    """Router: decides which agent handles the request."""
     last_message = ""
     for m in reversed(state.messages):
         if isinstance(m, HumanMessage):
@@ -44,9 +44,7 @@ async def route_node(state: AgentState) -> dict:
     logger.info("Routing message: %s...", last_message[:80])
 
     try:
-        response = await router_llm.ainvoke(
-            ROUTER_PROMPT.format(message=last_message)
-        )
+        response = await router_llm.ainvoke(ROUTER_PROMPT.format(message=last_message))
         raw: str = response.content.strip().lower()  # type: ignore[assignment]
     except Exception as e:
         logger.error("Router LLM call failed: %s", e)
@@ -54,27 +52,30 @@ async def route_node(state: AgentState) -> dict:
 
     valid_agents = {"data_engineer", "data_analyst", "data_scientist"}
     next_agent = raw if raw in valid_agents else "data_analyst"
-
     logger.info("Routed to: %s", next_agent)
     return {"next_agent": next_agent}
 
 
 def route_decision(state: AgentState) -> str:
-    """Conditional edge: pick the next agent based on router output."""
     return state.next_agent
 
 
 def approval_check(state: AgentState) -> str:
-    """After Data Engineer, check if human approval is needed."""
     if state.requires_approval:
         logger.info("Approval required — interrupting graph")
         return "wait_for_approval"
     return "continue"
 
 
+def after_analyst(state: AgentState) -> str:
+    return "explore_critique" if state.mode == "explore" else "summarize"
+
+
+def after_scientist(state: AgentState) -> str:
+    return "quality_assembly" if state.mode == "explore" else "summarize"
+
+
 async def approval_gate_node(state: AgentState) -> dict:
-    """Human-in-the-loop gate. The graph interrupts here.
-    When resumed, approval_status will be set by the API."""
     logger.info(
         "Approval gate: status=%s for thread=%s",
         state.approval_status,
@@ -86,23 +87,23 @@ async def approval_gate_node(state: AgentState) -> dict:
             "messages": [AIMessage(content="Semantic layer update approved by user.", name="system")],
             "requires_approval": False,
         }
-    else:
-        return {
-            "messages": [AIMessage(content="Semantic layer update rejected by user.", name="system")],
-            "requires_approval": False,
-            "final_answer": "Update rejected. No changes were made to the semantic layer.",
-        }
+    return {
+        "messages": [AIMessage(content="Semantic layer update rejected by user.", name="system")],
+        "requires_approval": False,
+        "final_answer": "Update rejected. No changes were made to the semantic layer.",
+    }
 
 
 def after_approval(state: AgentState) -> str:
-    """Route after approval gate."""
     if state.approval_status == "approved":
         return "continue"
     return "end"
 
 
 async def summarize_node(state: AgentState) -> dict:
-    """Final node: produce a summary from all agent outputs."""
+    if state.final_answer:
+        return {}
+
     parts: list[str] = []
     if state.schema_info:
         parts.append(f"[Data Engineer]\n{state.schema_info}")
@@ -115,24 +116,20 @@ async def summarize_node(state: AgentState) -> dict:
     return {"final_answer": summary}
 
 
-# ──────────────────── Build the Graph ────────────────────
-
 def build_graph() -> StateGraph:
-    """Construct the LangGraph workflow with Human-in-the-Loop."""
     builder = StateGraph(AgentState)
 
-    # Add nodes
     builder.add_node("router", route_node)
     builder.add_node("data_engineer", data_engineer_node)
     builder.add_node("data_analyst", data_analyst_node)
     builder.add_node("data_scientist", data_scientist_node)
+    builder.add_node("explore_critique", explore_critique_node)
+    builder.add_node("quality_assembly", quality_assembly_node)
     builder.add_node("approval_gate", approval_gate_node)
     builder.add_node("summarize", summarize_node)
 
-    # Entry
     builder.set_entry_point("router")
 
-    # Router → agent
     builder.add_conditional_edges(
         "router",
         route_decision,
@@ -143,41 +140,40 @@ def build_graph() -> StateGraph:
         },
     )
 
-    # Data Engineer → approval check
     builder.add_conditional_edges(
         "data_engineer",
         approval_check,
-        {
-            "wait_for_approval": "approval_gate",
-            "continue": "summarize",
-        },
+        {"wait_for_approval": "approval_gate", "continue": "summarize"},
     )
 
-    # Approval gate → continue or end
     builder.add_conditional_edges(
         "approval_gate",
         after_approval,
-        {
-            "continue": "summarize",
-            "end": END,
-        },
+        {"continue": "summarize", "end": END},
     )
 
-    # Other agents → summarize
-    builder.add_edge("data_analyst", "summarize")
-    builder.add_edge("data_scientist", "summarize")
+    builder.add_conditional_edges(
+        "data_analyst",
+        after_analyst,
+        {"explore_critique": "explore_critique", "summarize": "summarize"},
+    )
 
-    # Summarize → end
+    builder.add_edge("explore_critique", "quality_assembly")
+    builder.add_edge("quality_assembly", "summarize")
+
+    builder.add_conditional_edges(
+        "data_scientist",
+        after_scientist,
+        {"quality_assembly": "quality_assembly", "summarize": "summarize"},
+    )
+
     builder.add_edge("summarize", END)
-
     return builder
 
-
-# ──────────────────── Compile with Checkpointer ────────────────────
 
 checkpointer = MemorySaver()
 
 graph = build_graph().compile(
     checkpointer=checkpointer,
-    interrupt_before=["approval_gate"],  # Human-in-the-loop interrupt
+    interrupt_before=["approval_gate"],
 )

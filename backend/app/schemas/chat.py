@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -16,3 +16,5 @@ class ChatResponse(BaseModel):
     content: str
     requires_approval: bool = False
     pending_action: str | None = None
+    quality_payload: dict[str, Any] | None = None
+    quality_gaps: list[str] | None = None
