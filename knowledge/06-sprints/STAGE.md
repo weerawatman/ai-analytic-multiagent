@@ -4,10 +4,10 @@
 
 ## Current Sprint
 
-**Sprint 2** — STORE (SQLite chat, JSON backlog, semantic refactor) ✅  
-Log: `sprint-2-storage.md`
+**Sprint 2** — STORE ✅ · `sprint-2-storage.md`  
+**Sprint 3** — UI (Explore/Trusted, progress, backlog sidebar) ✅ · `sprint-3-ui.md`
 
-**Next:** Sprint 3 — UI modes & backlog sidebar
+**Next:** Sprint 4 — Schema scan + theme selection
 
 ## Preconditions
 
@@ -18,5 +18,6 @@ Log: `sprint-2-storage.md`
 ## Human Gate (per sprint)
 
 - [x] Sprint 1 code review + commit sign-off
-- [ ] Sprint 2 code review + commit sign-off
+- [x] Sprint 2 code review + commit sign-off
+- [ ] Sprint 3 code review + commit sign-off
 - [ ] Phase 1 validation (VALID-1)

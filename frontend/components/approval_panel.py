@@ -1,9 +1,8 @@
 import os
 
-import httpx
 import streamlit as st
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
+from components.api_client import post_json
 
 
 def render_approval_panel() -> None:
@@ -25,17 +24,14 @@ def render_approval_panel() -> None:
 def _handle_approval(approved: bool, feedback: str) -> None:
     """Send approval/rejection to backend and update UI."""
     try:
-        response = httpx.post(
-            f"{BACKEND_URL}/api/v1/approval/",
-            json={
+        data = post_json(
+            "/api/v1/approval/",
+            {
                 "thread_id": st.session_state.thread_id,
                 "approved": approved,
                 "feedback": feedback or None,
             },
-            timeout=300.0,
         )
-        response.raise_for_status()
-        data = response.json()
 
         status = "Approved" if approved else "Rejected"
         content = f"**[{data['agent']}] ({status})**\n\n{data['content']}"
