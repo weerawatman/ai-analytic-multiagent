@@ -9,7 +9,7 @@ This file defines how AI agents should interact with this repository.
 ```
 Project:     AI Analytics Multi-Agent (Fabric Insight Explorer)
 Description: Local AI Data Team for deep insight exploration on Microsoft Fabric DW, with Explore/Trusted knowledge loop
-Status:      architecture
+Status:      design
 Created:     2026-07-15
 Updated:     2026-07-15
 Owner:       Data Engineer (solo Phase 1)
@@ -36,6 +36,8 @@ Owner:       Data Engineer (solo Phase 1)
 | Stage | Artifact | Path |
 |-------|----------|------|
 | Discovery | Discovery brief | `knowledge/01-discovery/discovery-brief.md` |
+| Design | User journeys | `knowledge/02-design/user-journeys/` |
+| Design | Design decisions | `knowledge/02-design/design-decisions.md` |
 | PRD | Product requirements | `knowledge/03-prd/prd.md` |
 | PRD | Constraints | `knowledge/03-prd/constraints.md` |
 | PRD | NFRs | `knowledge/03-prd/nfr.md` |
