@@ -1,0 +1,42 @@
+{
+  "tables": {
+    "sales": {
+      "description": "Daily sales transactions",
+      "columns": {
+        "id": "Primary key",
+        "product_name": "Name of the product sold",
+        "category": "Product category",
+        "quantity": "Number of units sold",
+        "unit_price": "Price per unit in THB",
+        "total_amount": "Total sale amount (quantity * unit_price)",
+        "sale_date": "Date of the transaction",
+        "region": "Sales region"
+      },
+      "business_terms": {
+        "revenue": "SUM(total_amount)",
+        "average_order_value": "AVG(total_amount)",
+        "units_sold": "SUM(quantity)"
+      }
+    },
+    "customers": {
+      "description": "Customer information",
+      "columns": {
+        "id": "Primary key",
+        "name": "Customer full name",
+        "email": "Customer email",
+        "segment": "Customer segment (Enterprise/SMB/Consumer)",
+        "created_at": "Registration date"
+      }
+    },
+    "products": {
+      "description": "Product catalog",
+      "columns": {
+        "id": "Primary key",
+        "name": "Product name",
+        "category": "Product category",
+        "price": "Listed price in THB",
+        "stock_quantity": "Current stock level"
+      }
+    }
+  }
+}

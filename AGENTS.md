@@ -1,0 +1,81 @@
+# AGENTS.md — Universal Agent Contract
+
+This file defines how AI agents should interact with this repository.
+
+---
+
+## Project Configuration
+
+```
+Project:     AI Analytics Multi-Agent (Fabric Insight Explorer)
+Description: Local AI Data Team for deep insight exploration on Microsoft Fabric DW, with Explore/Trusted knowledge loop
+Status:      architecture
+Created:     2026-07-15
+Updated:     2026-07-15
+Owner:       Data Engineer (solo Phase 1)
+```
+
+**Status** reflects current focus. Valid values: `discovery`, `design`, `prd`, `refinement`, `architecture`, `build`, `testing`, `deployment`, `operations`.
+
+---
+
+## General Rules
+
+1. **Read before you write.** Check `knowledge/` before producing artifacts.
+2. **Respect preconditions.** Do not skip stages without required artifacts.
+3. **Write artifacts to the correct location.** See stage definitions below.
+4. **Flag human gates.** Stop and ask before scope, architecture, or production decisions.
+5. **Maintain context chain.** Reference upstream artifacts (discovery → PRD → architecture).
+6. **Phase 1 priority:** Output quality and correctness over speed or UI polish.
+7. **Fabric is read-only.** Never execute write DDL/DML against `WH_SAP_PRD` without explicit human approval.
+
+---
+
+## Key Artifacts (Current)
+
+| Stage | Artifact | Path |
+|-------|----------|------|
+| Discovery | Discovery brief | `knowledge/01-discovery/discovery-brief.md` |
+| PRD | Product requirements | `knowledge/03-prd/prd.md` |
+| PRD | Constraints | `knowledge/03-prd/constraints.md` |
+| PRD | NFRs | `knowledge/03-prd/nfr.md` |
+| Architecture | System design | `knowledge/05-architecture/architecture/Architecture.md` |
+| Architecture | Tech stack | `knowledge/05-architecture/tech-stack.md` |
+| Architecture | Phase 1 plan | `knowledge/05-architecture/phases/phase-1.md` |
+| Architecture | ADRs | `knowledge/05-architecture/adr/` |
+
+---
+
+## Phase 1 Summary (Locked Decisions)
+
+- **Users:** Solo Data Engineer (BA/DA later)
+- **Data source:** Microsoft Fabric DW (`WH_SAP_PRD`) only — no PostgreSQL for analytics
+- **Auth to DW:** Service Principal, SELECT-only + SQL allowlist guard
+- **Modes:** `Explore` (draft) and `Trusted` (validated definitions)
+- **Quality bar:** Heavy validation (SQL, assumptions, sanity checks, sample rows)
+- **Storage:** JSON (semantic/backlog) + SQLite (chat history) under `data/local/`
+- **Runtime:** Native on Windows (FastAPI + Streamlit + Ollama)
+- **LLM:** Local Ollama ~14B default, switchable to ~32B
+- **Language:** Thai for UI/reports; English for SQL/technical metadata
+- **Phase 1 done when:** One theme completes full loop + at least one Trusted playbook
+
+---
+
+## Human Gates
+
+| Gate | When |
+|------|------|
+| PRD sign-off | Before refinement/build |
+| Architecture sign-off | Before build sprint |
+| Trusted promotion | Before insight enters semantic layer |
+| DW change suggestions | Before any write to Fabric (Phase 1: never auto-apply) |
+
+---
+
+## Feedback Loop
+
+```
+Explore → Backlog → BA/DA validation → Trusted semantic/playbook → future Explore
+```
+
+Operations feedback (Phase 2+) feeds back into `knowledge/01-discovery/`.

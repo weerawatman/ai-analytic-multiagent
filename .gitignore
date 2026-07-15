@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Local data (production query results, chat, backlog)
+data/local/
+
+# Agent overrides (branch-scoped)
+AGENTS.override.md
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite temp
+*.db-journal
+
+# Exports (optional — keep local only)
+data/local/exports/

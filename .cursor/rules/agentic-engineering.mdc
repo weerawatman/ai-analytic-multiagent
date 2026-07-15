@@ -1,0 +1,16 @@
+---
+description: Agentic Engineering framework rules
+globs: **/*
+---
+
+@AGENTS.md
+
+If AGENTS.override.md exists, read it — it overrides Status for this branch.
+
+Before any task:
+1. Read AGENTS.md for project status and locked Phase 1 decisions
+2. Load relevant artifacts from knowledge/ (especially 03-prd/ and 05-architecture/)
+3. Respect human gates — do not auto-promote Trusted or write to Fabric
+
+Write artifacts to the appropriate knowledge/ subdirectory.
+Phase 1 priority: output quality over speed or UI polish.

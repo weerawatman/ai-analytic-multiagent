@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "metrics": [
+    {
+      "metric_key": "example_metric",
+      "display_name_th": "ตัวอย่างเมตริก",
+      "business_definition_th": "คำนิยามธุรกิจที่ BA/DA validate แล้ว",
+      "sql_template": "SELECT ... FROM ... WHERE ...",
+      "grain": "daily / per customer / etc.",
+      "standard_filters": ["status = 'active'"],
+      "validated_assumptions": [
+        "รวมเฉพาะ order ที่ completed"
+      ],
+      "playbook_th": "1) ตรวจ grain\n2) ตรวจ filter วันที่\n3) เปรียบเทียบกับรายงาน X",
+      "example_questions_th": [
+        "ยอดขายเดือนนี้เทียบเดือนก่อนเป็นอย่างไร?",
+        "Top 10 ลูกค้าตามเมตริกนี้คือใคร?"
+      ],
+      "source_backlog_id": "00000000-0000-0000-0000-000000000000",
+      "approved_at": "2026-01-01T00:00:00Z",
+      "approved_by": "data_engineer"
+    }
+  ]
+}
