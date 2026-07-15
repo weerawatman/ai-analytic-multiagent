@@ -2,22 +2,6 @@ import pytest
 from httpx import AsyncClient
 
 
-@pytest.fixture
-def temp_storage(tmp_path, monkeypatch):
-    local = tmp_path / "local"
-    monkeypatch.setenv("DATA_LOCAL_DIR", str(local))
-    from backend.app.core.config import get_settings
-
-    get_settings.cache_clear()
-    from backend.app.services.local_paths import ensure_local_structure
-    from backend.app.services.chat_store import init_chat_db
-
-    ensure_local_structure()
-    init_chat_db()
-    yield local
-    get_settings.cache_clear()
-
-
 @pytest.mark.anyio
 async def test_backlog_api_crud(client: AsyncClient, temp_storage) -> None:
     create_resp = await client.post(
@@ -52,7 +36,8 @@ async def test_semantic_trusted_endpoint(client: AsyncClient, temp_storage) -> N
 
 
 @pytest.mark.anyio
-async def test_sessions_empty(client: AsyncClient, temp_storage) -> None:
-    resp = await client.get("/api/v1/sessions/")
+async def test_themes_list_empty(client: AsyncClient, temp_storage) -> None:
+    resp = await client.get("/api/v1/themes/")
     assert resp.status_code == 200
-    assert resp.json() == []
+    data = resp.json()
+    assert data["themes"] == []

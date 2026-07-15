@@ -1,19 +1,6 @@
 import pytest
 
-from backend.app.core.config import get_settings
 from backend.app.services import backlog_store, chat_store
-from backend.app.services.local_paths import ensure_local_structure
-
-
-@pytest.fixture
-def temp_storage(tmp_path, monkeypatch):
-    local = tmp_path / "local"
-    monkeypatch.setenv("DATA_LOCAL_DIR", str(local))
-    get_settings.cache_clear()
-    ensure_local_structure()
-    chat_store.init_chat_db()
-    yield local
-    get_settings.cache_clear()
 
 
 def test_chat_store_persists_messages(temp_storage) -> None:

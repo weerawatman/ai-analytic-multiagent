@@ -30,6 +30,8 @@ if "pending_approval" not in st.session_state:
     st.session_state.pending_approval = False
 if "mode" not in st.session_state:
     st.session_state.mode = "explore"
+if "theme_input" not in st.session_state:
+    st.session_state.theme_input = ""
 
 # ──── Sidebar ────
 with st.sidebar:

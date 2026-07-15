@@ -1,6 +1,6 @@
 import streamlit as st
 
-from components.api_client import get_json
+from components.theme_panel import render_theme_panel
 
 
 STATUS_ICONS = {
@@ -44,4 +44,4 @@ def render_mode_selector() -> None:
     else:
         st.caption("ใช้นิยามที่ approve แล้วใน semantic layer")
 
-    st.text_input("Theme (optional)", key="theme_input", placeholder="เช่น sales, inventory")
+    render_theme_panel()
