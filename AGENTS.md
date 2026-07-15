@@ -9,7 +9,7 @@ This file defines how AI agents should interact with this repository.
 ```
 Project:     AI Analytics Multi-Agent (Fabric Insight Explorer)
 Description: Local AI Data Team for deep insight exploration on Microsoft Fabric DW, with Explore/Trusted knowledge loop
-Status:      architecture
+Status:      build
 Created:     2026-07-15
 Updated:     2026-07-15
 Owner:       Data Engineer (solo Phase 1)

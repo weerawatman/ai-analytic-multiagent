@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.app.api.routes import approval, chat
+from backend.app.api.routes import approval, chat, fabric
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
 
@@ -49,8 +49,26 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 # Routes
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(approval.router, prefix="/api/v1")
+app.include_router(fabric.router, prefix="/api/v1")
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
-    return {"status": "healthy", "service": "ai-analytics-multiagent"}
+async def health_check() -> dict[str, object]:
+    from backend.app.services.fabric_connector import get_fabric_connector
+
+    connector = get_fabric_connector()
+    fabric_status: dict[str, object] = {
+        "configured": connector.is_configured(),
+        "connected": False,
+    }
+    if connector.is_configured():
+        try:
+            fabric_status = {**fabric_status, **connector.ping(), "connected": True}
+        except Exception as exc:
+            fabric_status["error"] = str(exc)
+
+    return {
+        "status": "healthy",
+        "service": "ai-analytics-multiagent",
+        "fabric": fabric_status,
+    }

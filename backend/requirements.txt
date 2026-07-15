@@ -13,3 +13,5 @@ langgraph-checkpoint
 httpx
 python-dotenv
 psycopg2-binary
+pyodbc
+azure-identity
