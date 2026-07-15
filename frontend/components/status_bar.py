@@ -1,5 +1,6 @@
 import streamlit as st
 
+from components.api_client import get_json
 from components.theme_panel import render_theme_panel
 
 
@@ -43,5 +44,11 @@ def render_mode_selector() -> None:
         st.caption("ผลลัพธ์เป็น Draft — รอ validate กับ BA/DA")
     else:
         st.caption("ใช้นิยามที่ approve แล้วใน semantic layer")
+        try:
+            trusted = get_json("/api/v1/semantic/trusted")
+            count = len(trusted.get("metrics") or [])
+            st.caption(f"Trusted metrics: {count}")
+        except Exception:
+            pass
 
     render_theme_panel()

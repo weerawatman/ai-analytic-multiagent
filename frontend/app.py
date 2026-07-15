@@ -8,6 +8,7 @@ from components.api_client import post_json
 from components.approval_panel import render_approval_panel
 from components.backlog_panel import render_backlog_panel
 from components.chat_box import render_assistant_message
+from components.promotion_panel import render_promotion_panel
 from components.status_bar import render_fabric_status, render_mode_selector
 
 DEFAULT_TIMEOUT = float(os.getenv("COMPOSE_HTTP_TIMEOUT", "600"))
@@ -32,6 +33,8 @@ if "mode" not in st.session_state:
     st.session_state.mode = "explore"
 if "theme_input" not in st.session_state:
     st.session_state.theme_input = ""
+if "promotion_preview" not in st.session_state:
+    st.session_state.promotion_preview = None
 
 # ──── Sidebar ────
 with st.sidebar:
@@ -86,9 +89,12 @@ for msg in st.session_state.messages:
         else:
             st.markdown(msg["content"])
 
-# ──── Approval Panel ────
+# ──── Approval / Promotion Panels ────
 if st.session_state.pending_approval:
     render_approval_panel()
+
+if st.session_state.get("promotion_preview"):
+    render_promotion_panel()
 
 # ──── Chat Input ────
 if prompt := st.chat_input("ถามทีมข้อมูลของคุณ..."):

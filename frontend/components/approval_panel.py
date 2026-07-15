@@ -1,5 +1,4 @@
-import os
-
+import httpx
 import streamlit as st
 
 from components.api_client import post_json

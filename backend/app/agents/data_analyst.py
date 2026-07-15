@@ -7,6 +7,30 @@ from backend.app.core.logger import logger
 from backend.app.services.fabric_sql import fabric_is_available, get_fabric_schema_text, run_fabric_sql
 from backend.app.services.semantic_store import read_trusted_layer
 
+
+def _filter_trusted_metrics(trusted: dict, theme: str | None) -> list[dict]:
+    metrics = trusted.get("metrics") or []
+    if not theme:
+        return metrics
+    themed = [m for m in metrics if m.get("theme") == theme]
+    return themed if themed else metrics
+
+
+TRUSTED_MODE_RULES = """
+TRUSTED MODE RULES (strict):
+- Use ONLY metrics from the Trusted definitions list above — do NOT invent new metrics or filters
+- SQL MUST follow sql_template, grain, and standard_filters from the matched Trusted metric
+- If no Trusted metric matches the question, say so in Thai and list available metrics — do NOT guess
+- Mark ANALYSIS section as Trusted (not Draft)
+- Reference metric_key in your response when using a definition
+"""
+
+EXPLORE_MODE_RULES = """
+EXPLORE MODE RULES:
+- Propose draft SQL and mark ANALYSIS as Draft
+- List assumptions and questions for BA/DA validation
+"""
+
 settings = get_settings()
 
 llm = ChatOllama(
@@ -41,7 +65,9 @@ Rules:
   - ...
   QUESTIONS_FOR_BA_DA:
   - ...
-  ANALYSIS: <Thai summary of insight — mark as Draft if mode=explore>
+  ANALYSIS: <Thai summary — label as Draft or Trusted per mode>
+
+{mode_rules}
 
 User question context from Data Engineer (if any):
 {schema_info}
@@ -68,7 +94,21 @@ async def data_analyst_node(state: AgentState) -> dict:
 
     db_schema = get_fabric_schema_text() if fabric_is_available() else "(Fabric not configured)"
     trusted = await read_trusted_layer()
-    trusted_text = str(trusted.get("metrics", []))[:1500]
+    relevant_metrics = _filter_trusted_metrics(trusted, state.theme or None)
+    trusted_text = str(relevant_metrics)[:2000]
+    mode_rules = TRUSTED_MODE_RULES if state.mode == "trusted" else EXPLORE_MODE_RULES
+
+    if state.mode == "trusted" and not relevant_metrics:
+        no_trusted_msg = (
+            "[Trusted Mode] ยังไม่มี Trusted definition สำหรับ theme นี้ — "
+            "promote insight จาก backlog ก่อน หรือสลับเป็น Explore mode"
+        )
+        return {
+            "messages": [AIMessage(content=no_trusted_msg, name="data_analyst")],
+            "current_agent": "data_analyst",
+            "query_result": no_trusted_msg,
+            "final_answer": no_trusted_msg,
+        }
 
     messages = [
         {
@@ -79,6 +119,7 @@ async def data_analyst_node(state: AgentState) -> dict:
                 db_schema=db_schema,
                 trusted_layer=trusted_text,
                 schema_info=state.schema_info,
+                mode_rules=mode_rules,
             ),
         },
     ] + [

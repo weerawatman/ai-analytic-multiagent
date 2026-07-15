@@ -1,6 +1,7 @@
 import streamlit as st
 
 from components.api_client import get_json, patch_json, post_json
+from components.promotion_panel import load_promotion_preview
 
 STATUS_OPTIONS = ["new", "discussing", "validated", "rejected", "promoted"]
 STATUS_LABELS = {
@@ -39,6 +40,14 @@ def render_backlog_panel() -> None:
                 st.markdown(item["answer_summary_th"])
             if item.get("sql_primary"):
                 st.code(item["sql_primary"], language="sql")
+
+            if item.get("status") in {"validated", "discussing"}:
+                if st.button("⭐ Promote to Trusted", key=f"promote_{item['id']}"):
+                    try:
+                        load_promotion_preview(item["id"])
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"โหลด preview ไม่สำเร็จ: {exc}")
 
             if st.button("📄 Export รายงาน", key=f"export_{item['id']}"):
                 try:
