@@ -2,10 +2,12 @@ from fastapi import APIRouter, HTTPException, Query
 
 from backend.app.schemas.backlog import (
     BacklogCreateRequest,
+    BacklogExportResponse,
     BacklogItemResponse,
     BacklogUpdateRequest,
 )
 from backend.app.services import backlog_store
+from backend.app.services.report_generator import export_backlog_item
 
 router = APIRouter(prefix="/backlog", tags=["backlog"])
 
@@ -46,3 +48,12 @@ async def update_backlog_item(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return BacklogItemResponse(**item)
+
+
+@router.post("/{item_id}/export", response_model=BacklogExportResponse)
+async def export_backlog_report(item_id: str) -> BacklogExportResponse:
+    item = backlog_store.get_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Backlog item not found")
+    result = export_backlog_item(item)
+    return BacklogExportResponse(**result)

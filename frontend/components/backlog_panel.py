@@ -1,6 +1,6 @@
 import streamlit as st
 
-from components.api_client import get_json, patch_json
+from components.api_client import get_json, patch_json, post_json
 
 STATUS_OPTIONS = ["new", "discussing", "validated", "rejected", "promoted"]
 STATUS_LABELS = {
@@ -39,6 +39,20 @@ def render_backlog_panel() -> None:
                 st.markdown(item["answer_summary_th"])
             if item.get("sql_primary"):
                 st.code(item["sql_primary"], language="sql")
+
+            if st.button("📄 Export รายงาน", key=f"export_{item['id']}"):
+                try:
+                    export_data = post_json(f"/api/v1/backlog/{item['id']}/export", {})
+                    st.download_button(
+                        label="ดาวน์โหลด Markdown",
+                        data=export_data["content"],
+                        file_name=export_data["filename"],
+                        mime="text/markdown",
+                        key=f"dl_{item['id']}",
+                    )
+                    st.caption(f"บันทึกที่: {export_data.get('file_path', '')}")
+                except Exception as exc:
+                    st.error(f"Export ไม่สำเร็จ: {exc}")
 
             feedback_key = f"feedback_{item['id']}"
             status_key = f"status_{item['id']}"

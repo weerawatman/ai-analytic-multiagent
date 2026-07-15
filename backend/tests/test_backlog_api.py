@@ -36,8 +36,21 @@ async def test_semantic_trusted_endpoint(client: AsyncClient, temp_storage) -> N
 
 
 @pytest.mark.anyio
-async def test_themes_list_empty(client: AsyncClient, temp_storage) -> None:
-    resp = await client.get("/api/v1/themes/")
+async def test_backlog_export(client: AsyncClient, temp_storage) -> None:
+    create = await client.post(
+        "/api/v1/backlog/",
+        json={
+            "theme": "sales",
+            "question_th": "export test?",
+            "answer_summary_th": "summary",
+            "sql_primary": "SELECT 1",
+            "assumptions": ["a"],
+            "questions_for_ba_da": ["q"],
+        },
+    )
+    item_id = create.json()["id"]
+    resp = await client.post(f"/api/v1/backlog/{item_id}/export")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["themes"] == []
+    assert "content" in data
+    assert "export test" in data["content"]

@@ -53,6 +53,13 @@ class BacklogItemResponse(BaseModel):
     updated_at: str
 
 
+class BacklogExportResponse(BaseModel):
+    item_id: str
+    file_path: str
+    filename: str
+    content: str
+
+
 class SessionSummary(BaseModel):
     id: str
     title: str | None
