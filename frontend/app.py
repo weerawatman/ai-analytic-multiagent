@@ -10,6 +10,7 @@ from components.backlog_panel import render_backlog_panel
 from components.chat_box import render_assistant_message
 from components.promotion_panel import render_promotion_panel
 from components.status_bar import render_fabric_status, render_mode_selector
+from components.validation_panel import render_validation_panel
 
 DEFAULT_TIMEOUT = float(os.getenv("COMPOSE_HTTP_TIMEOUT", "600"))
 
@@ -56,6 +57,9 @@ with st.sidebar:
 
     st.divider()
     render_backlog_panel()
+
+    st.divider()
+    render_validation_panel()
 
     if st.session_state.get("last_quality_payload"):
         st.divider()
