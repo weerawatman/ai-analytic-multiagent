@@ -5,14 +5,19 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.app.api.routes import approval, chat, fabric
+from backend.app.api.routes import approval, backlog, chat, fabric, semantic, sessions
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
+from backend.app.services.chat_store import init_chat_db
+from backend.app.services.local_paths import ensure_local_structure
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting AI Analytics Multi-Agent System")
+    ensure_local_structure()
+    init_chat_db()
+    logger.info("Local storage initialized (SQLite + JSON)")
     yield
     logger.info("Shutting down AI Analytics Multi-Agent System")
 
@@ -50,6 +55,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(approval.router, prefix="/api/v1")
 app.include_router(fabric.router, prefix="/api/v1")
+app.include_router(backlog.router, prefix="/api/v1")
+app.include_router(sessions.router, prefix="/api/v1")
+app.include_router(semantic.router, prefix="/api/v1")
 
 
 @app.get("/health")

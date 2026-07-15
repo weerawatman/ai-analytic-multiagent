@@ -4,8 +4,10 @@
 
 ## Current Sprint
 
-**Sprint 1** — INFRA (Fabric connect, SQL guard, native scripts)  
-Log: `sprint-1-infra.md`
+**Sprint 2** — STORE (SQLite chat, JSON backlog, semantic refactor) ✅  
+Log: `sprint-2-storage.md`
+
+**Next:** Sprint 3 — UI modes & backlog sidebar
 
 ## Preconditions
 
@@ -15,6 +17,6 @@ Log: `sprint-1-infra.md`
 
 ## Human Gate (per sprint)
 
-- [ ] Sprint 1 code review + commit sign-off
-- [ ] Sprint 2 ...
+- [x] Sprint 1 code review + commit sign-off
+- [ ] Sprint 2 code review + commit sign-off
 - [ ] Phase 1 validation (VALID-1)
