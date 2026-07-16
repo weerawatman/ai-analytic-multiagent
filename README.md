@@ -98,7 +98,20 @@ Works without a live warehouse when these exist under `data/local/`:
 - `knowledge/themes/{theme_id}/discovery.json` — schema context for agents
 - optional: `team_memory/{theme_id}.json`, `knowledge/sql_reference/`, glossary
 
-Still needs: **Ollama** for the local AI team, and (optional) **Anthropic** for Consultant.
+Still needs: **Ollama** for the local AI team (`OLLAMA_BASE_URL`, default model ~7B–14B depending on RAM), and (optional) **Anthropic** for Consultant.
+
+If LAN Ollama is unreachable, point `.env` to local:
+
+```
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5-coder:7b
+```
+
+Re-verify Phase 3 remaining checks:
+
+```powershell
+$env:PYTHONPATH="."; .\.venv\Scripts\python.exe scripts\verify_phase3_remaining.py
+```
 
 Does **not** work offline: Schema scan, fresh Discovery against Fabric, executing SQL for real row samples.
 

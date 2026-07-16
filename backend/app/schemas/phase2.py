@@ -69,6 +69,7 @@ class TeamMemoryResponse(BaseModel):
     recommended_tables: list[str] = Field(default_factory=list)
     key_metrics: list[str] = Field(default_factory=list)
     roles: dict = Field(default_factory=dict)
+    consultant_notes: list[dict] = Field(default_factory=list)
 
 
 class SapTableImportRequest(BaseModel):

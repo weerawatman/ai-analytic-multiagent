@@ -36,6 +36,17 @@ def render_team_memory_panel() -> None:
     if data.get("key_metrics"):
         st.caption("Metrics: " + ", ".join(data["key_metrics"][:5]))
 
+    consultant_notes = data.get("consultant_notes") or []
+    if consultant_notes:
+        with st.expander(f"🎓 คำแนะนำที่ปรึกษา (Claude) — {len(consultant_notes)} รายการ", expanded=True):
+            for n in consultant_notes[-3:]:
+                at = (n.get("at") or "")[:19]
+                note = n.get("note") or ""
+                st.caption(at)
+                st.markdown(note[:1500])
+                if len(note) > 1500:
+                    st.caption("…(ตัดความยาว — ดูเต็มในไฟล์ team memory)")
+
     roles = data.get("roles", {})
     for role_key, label in ROLE_ORDER:
         entry = roles.get(role_key, {})
