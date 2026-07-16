@@ -13,6 +13,7 @@ from backend.app.api.routes import (
     discovery,
     fabric,
     feedback,
+    jobs,
     knowledge,
     onboarding,
     semantic,
@@ -23,6 +24,7 @@ from backend.app.api.routes import (
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
 from backend.app.services.chat_store import init_chat_db
+from backend.app.services.job_store import fail_orphaned_jobs, init_jobs_db
 from backend.app.services.local_paths import ensure_local_structure
 
 
@@ -31,6 +33,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting AI Analytics Multi-Agent System")
     ensure_local_structure()
     init_chat_db()
+    init_jobs_db()
+    orphaned = fail_orphaned_jobs()
+    if orphaned:
+        logger.warning("Marked %d orphaned job(s) from a previous run as failed", orphaned)
     logger.info("Local storage initialized (SQLite + JSON)")
     yield
     logger.info("Shutting down AI Analytics Multi-Agent System")
@@ -79,10 +85,13 @@ app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(briefings.router, prefix="/api/v1")
 app.include_router(feedback.router, prefix="/api/v1")
 app.include_router(onboarding.router, prefix="/api/v1")
+app.include_router(jobs.router, prefix="/api/v1")
 
 
 @app.get("/health")
 async def health_check() -> dict[str, object]:
+    import asyncio
+
     from backend.app.services.fabric_connector import get_fabric_connector
 
     connector = get_fabric_connector()
@@ -92,7 +101,8 @@ async def health_check() -> dict[str, object]:
     }
     if connector.is_configured():
         try:
-            fabric_status = {**fabric_status, **connector.ping(), "connected": True}
+            ping = await asyncio.to_thread(connector.ping)
+            fabric_status = {**fabric_status, **ping, "connected": True}
         except Exception as exc:
             fabric_status["error"] = str(exc)
 

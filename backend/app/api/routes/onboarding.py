@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException
 
-from backend.app.schemas.phase2 import OnboardingResponse, TeamMemoryResponse
-from backend.app.services.onboarding_service import run_onboarding
+from backend.app.schemas.jobs import JobSubmitResponse
+from backend.app.schemas.phase2 import TeamMemoryResponse
+from backend.app.services import job_runner
+from backend.app.services.discovery_service import load_discovery
 from backend.app.services.team_memory_store import load_team_memory
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
@@ -15,12 +17,28 @@ async def get_team_memory(theme_id: str) -> TeamMemoryResponse:
     return TeamMemoryResponse(**data)
 
 
-@router.post("/{theme_id}/run", response_model=OnboardingResponse)
-async def run_theme_onboarding(theme_id: str, theme_name: str = "") -> OnboardingResponse:
+@router.post("/{theme_id}/run", response_model=JobSubmitResponse, status_code=202)
+async def run_theme_onboarding(theme_id: str, theme_name: str = "") -> JobSubmitResponse:
+    """Submit a team onboarding run — returns a job to poll at /api/v1/jobs/{job_id}."""
+    if not load_discovery(theme_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"No discovery for theme {theme_id} — run discovery first",
+        )
     try:
-        result = await run_onboarding(theme_id, theme_name=theme_name)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return OnboardingResponse(**result)
+        job = job_runner.start_onboarding_job(theme_id, theme_name)
+    except job_runner.JobConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Onboarding is already running for this theme",
+                "job_id": exc.job["id"],
+            },
+        ) from exc
+
+    return JobSubmitResponse(
+        job_id=job["id"],
+        thread_id=theme_id,
+        status=job["status"],
+        kind="onboarding",
+    )

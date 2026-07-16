@@ -1,10 +1,11 @@
 import os
 import uuid
+from datetime import datetime, timezone
 
 import httpx
 import streamlit as st
 
-from components.api_client import CHAT_TIMEOUT, get_json, post_json
+from components.api_client import find_active_job, get_job, get_json, post_json, submit_chat_job
 from components.approval_panel import render_approval_panel
 from components.backlog_panel import render_backlog_panel
 from components.ceo_briefing_panel import render_ceo_briefing_panel
@@ -26,91 +27,154 @@ st.set_page_config(
 st.title("📊 AI Fabric Insight Explorer")
 st.caption("Local AI Data Team — Explore · Backlog · Trusted")
 
+STEP_LABELS = {
+    "prepare_context": "📋 เตรียมบริบท",
+    "router": "🧭 Router",
+    "de_context": "🔧 Data Engineer",
+    "data_engineer": "🔧 Data Engineer",
+    "data_analyst": "📈 Data Analyst",
+    "explore_critique": "🧪 Data Scientist",
+    "data_scientist": "🧪 Data Scientist",
+    "business_analyst": "💼 Business Analyst",
+    "quality_assembly": "✅ Quality Check",
+    "summarize": "📝 สรุปคำตอบ",
+    "approval_gate": "🚦 รออนุมัติ",
+}
 
-def _execute_chat_request(prompt: str, mode: str, theme: str | None, theme_id: str | None) -> None:
-    """Call backend and persist assistant message in session state."""
-    with st.status(
-        "ทีมกำลังทำงาน: 🔧 DE → 📈 DA → 🧪 DS → 💼 BA (อาจใช้เวลา 15–45 นาที)",
-        expanded=True,
-    ) as status:
-        st.write("อย่าปิดแท็บหรือถามซ้ำ — รอจน status ขึ้น 'เสร็จแล้ว'")
-        try:
-            data = post_json(
-                "/api/v1/chat/",
-                {
-                    "thread_id": st.session_state.thread_id,
-                    "message": prompt,
-                    "mode": mode,
-                    "theme": theme,
-                    "theme_id": theme_id,
-                },
-                timeout=CHAT_TIMEOUT,
-            )
-            status.update(label="เสร็จแล้ว", state="complete")
 
-            agent = data["agent"]
-            content = data.get("content") or "(ไม่มีเนื้อหาตอบกลับ)"
-            agents_involved = data.get("agents_involved") or []
-            quality_payload = data.get("quality_payload")
-            st.session_state.last_quality_payload = quality_payload
+def _load_history(thread_id: str) -> list[dict]:
+    """Reload chat history from the backend so answers survive refresh/timeouts."""
+    try:
+        raw = get_json(f"/api/v1/sessions/{thread_id}/messages")
+    except Exception:
+        return []
+    messages: list[dict] = []
+    for m in raw:
+        entry = {"role": m["role"], "content": m["content"]}
+        if m["role"] == "assistant":
+            entry["agent"] = m.get("agent") or "agent"
+            entry["mode"] = st.session_state.get("mode", "explore")
+        messages.append(entry)
+    return messages
 
-            render_assistant_message(content, agent, mode, agents_involved)
 
-            if quality_payload and mode == "explore":
-                gaps = quality_payload.get("quality_gaps") or data.get("quality_gaps")
-                if gaps:
-                    st.warning(f"Quality Bar D ยังขาด: {', '.join(gaps)}")
+def _handle_finished_job(job: dict) -> None:
+    """Append the finished job's answer/error to the conversation exactly once."""
+    if job["id"] in st.session_state.handled_job_ids:
+        return
+    st.session_state.handled_job_ids.add(job["id"])
+    st.session_state.active_job_id = None
 
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": content,
-                    "agent": agent,
-                    "mode": mode,
-                    "agents_involved": agents_involved,
-                }
-            )
+    status = job.get("status")
+    if status == "done":
+        result = job.get("result") or {}
+        content = result.get("content") or "(ไม่มีเนื้อหาตอบกลับ)"
+        agent = result.get("agent") or "ai_data_team"
+        agents_involved = result.get("agents_involved") or []
+        st.session_state.last_quality_payload = result.get("quality_payload")
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": content,
+                "agent": agent,
+                "mode": st.session_state.get("mode", "explore"),
+                "agents_involved": agents_involved,
+            }
+        )
+        if result.get("requires_approval"):
+            st.session_state.pending_approval = True
+    elif status == "cancelled":
+        st.session_state.messages.append(
+            {"role": "assistant", "content": "❌ ยกเลิกคำถามนี้แล้ว", "mode": st.session_state.get("mode", "explore")}
+        )
+    else:
+        error = job.get("error") or "ไม่ทราบสาเหตุ — ดู log ที่ data/local/logs/backend.log"
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": f"เกิดข้อผิดพลาดระหว่างประมวลผล: {error}",
+                "mode": st.session_state.get("mode", "explore"),
+            }
+        )
 
-            if data.get("requires_approval"):
-                st.session_state.pending_approval = True
 
-        except httpx.TimeoutException:
-            status.update(label="Frontend timeout — backend อาจยังทำงานอยู่", state="error")
-            mins = int(CHAT_TIMEOUT // 60)
-            error_msg = (
-                f"รอคำตอบเกิน {mins} นาที — อย่าถามซ้ำ ลอง refresh หลัง 5 นาที "
-                "หรือเริ่ม thread ใหม่"
-            )
-            st.error(error_msg)
-            st.session_state.messages.append(
-                {"role": "assistant", "content": error_msg, "mode": mode}
-            )
-        except httpx.HTTPStatusError as e:
-            status.update(label="เกิดข้อผิดพลาด", state="error")
-            if e.response.status_code == 409:
-                error_msg = "ยังประมวลผลคำถามก่อนหน้าอยู่ — รอให้เสร็จก่อนถามใหม่"
+def _elapsed_minutes(started_at: str | None) -> str:
+    if not started_at:
+        return ""
+    try:
+        started = datetime.fromisoformat(started_at)
+        minutes = (datetime.now(timezone.utc) - started).total_seconds() / 60
+        return f" · ผ่านไป {minutes:.0f} นาที"
+    except ValueError:
+        return ""
+
+
+def _render_progress(job: dict) -> None:
+    st.markdown(f"**⏳ ทีมกำลังทำงาน**{_elapsed_minutes(job.get('started_at'))}")
+    done_steps = {p["step"]: p for p in job.get("progress", [])}
+    current = job.get("current_step")
+    for step, label in STEP_LABELS.items():
+        if step in done_steps:
+            entry = done_steps[step]
+            icon = "✅" if entry["status"] == "done" else "⚠️"
+            note = f" — {entry['note']}" if entry.get("note") else ""
+            st.markdown(f"{icon} {label}{note}")
+        elif step == current:
+            st.markdown(f"⏳ {label} ← กำลังทำงาน")
+    st.caption("ปิดแท็บ/refresh ได้ ระบบทำงานต่อเบื้องหลัง — กลับมาดูด้วย thread เดิมได้เสมอ")
+
+
+@st.fragment(run_every=3)
+def poll_active_job() -> None:
+    job_id = st.session_state.get("active_job_id")
+    if not job_id:
+        return
+    try:
+        job = get_job(job_id)
+    except Exception as exc:
+        st.warning(f"เช็คสถานะไม่สำเร็จ (จะลองใหม่อัตโนมัติ): {exc}")
+        return
+    if job.get("status") in ("queued", "running"):
+        _render_progress(job)
+        return
+    _handle_finished_job(job)
+    st.rerun(scope="app")
+
+
+def _submit_question(prompt: str, mode: str, theme: str | None, theme_id: str | None) -> None:
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    try:
+        data = submit_chat_job(
+            {
+                "thread_id": st.session_state.thread_id,
+                "message": prompt,
+                "mode": mode,
+                "theme": theme,
+                "theme_id": theme_id,
+            }
+        )
+        st.session_state.active_job_id = data["job_id"]
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 409:
+            detail = None
+            try:
+                detail = e.response.json().get("detail")
+            except Exception:
+                pass
+            if isinstance(detail, dict) and detail.get("job_id"):
+                st.session_state.active_job_id = detail["job_id"]
+                st.warning("ยังประมวลผลคำถามก่อนหน้าอยู่ — ติดตามสถานะงานเดิมต่อ")
             else:
-                detail = e.response.text[:200]
-                error_msg = f"Backend error {e.response.status_code}: {detail}"
-            st.error(error_msg)
-            st.session_state.messages.append(
-                {"role": "assistant", "content": error_msg, "mode": mode}
-            )
-        except httpx.HTTPError as e:
-            status.update(label="เกิดข้อผิดพลาด", state="error")
-            error_msg = f"เชื่อมต่อ backend ไม่สำเร็จ: {e}"
-            st.error(error_msg)
-            st.session_state.messages.append(
-                {"role": "assistant", "content": error_msg, "mode": mode}
-            )
-        finally:
-            st.session_state.chat_processing = False
-            st.session_state.pending_chat = None
+                st.error("ยังประมวลผลคำถามก่อนหน้าอยู่ — รอให้เสร็จก่อนถามใหม่")
+        else:
+            st.error(f"Backend error {e.response.status_code}: {e.response.text[:200]}")
+    except httpx.HTTPError as e:
+        st.error(f"เชื่อมต่อ backend ไม่สำเร็จ: {e}")
 
 
 # ──── Session State ────
 if "thread_id" not in st.session_state:
-    st.session_state.thread_id = str(uuid.uuid4())[:8]
+    st.session_state.thread_id = st.query_params.get("thread") or str(uuid.uuid4())[:8]
 if "messages" not in st.session_state:
     st.session_state.messages: list[dict[str, str]] = []
 if "pending_approval" not in st.session_state:
@@ -121,10 +185,28 @@ if "theme_input" not in st.session_state:
     st.session_state.theme_input = ""
 if "promotion_preview" not in st.session_state:
     st.session_state.promotion_preview = None
-if "chat_processing" not in st.session_state:
-    st.session_state.chat_processing = False
-if "pending_chat" not in st.session_state:
-    st.session_state.pending_chat = None
+if "active_job_id" not in st.session_state:
+    st.session_state.active_job_id = None
+if "handled_job_ids" not in st.session_state:
+    st.session_state.handled_job_ids = set()
+if "loaded_thread" not in st.session_state:
+    st.session_state.loaded_thread = None
+
+# Keep thread id in the URL so a browser refresh returns to the same conversation.
+if st.query_params.get("thread") != st.session_state.thread_id:
+    st.query_params["thread"] = st.session_state.thread_id
+
+# On first load (or thread switch): restore history + re-attach to a running job.
+if st.session_state.loaded_thread != st.session_state.thread_id:
+    st.session_state.loaded_thread = st.session_state.thread_id
+    st.session_state.messages = _load_history(st.session_state.thread_id)
+    st.session_state.active_job_id = None
+    try:
+        active = find_active_job(st.session_state.thread_id)
+        if active:
+            st.session_state.active_job_id = active["id"]
+    except Exception:
+        pass
 
 # ──── Sidebar ────
 with st.sidebar:
@@ -137,13 +219,15 @@ with st.sidebar:
     thread_val = st.text_input("Thread ID", value=st.session_state.thread_id, key="thread_input")
     if thread_val != st.session_state.thread_id:
         st.session_state.thread_id = thread_val
+        st.rerun()
 
     if st.button("เริ่มบทสนทนาใหม่"):
         st.session_state.thread_id = str(uuid.uuid4())[:8]
         st.session_state.messages = []
         st.session_state.pending_approval = False
-        st.session_state.chat_processing = False
-        st.session_state.pending_chat = None
+        st.session_state.active_job_id = None
+        st.session_state.loaded_thread = st.session_state.thread_id
+        st.query_params["thread"] = st.session_state.thread_id
         st.rerun()
 
     st.divider()
@@ -183,9 +267,6 @@ with col_mode:
     else:
         st.markdown("### 🟢 Trusted")
 
-if st.session_state.chat_processing:
-    st.info("⏳ กำลังประมวลผลคำถาม — อย่าถามซ้ำหรือเปลี่ยน thread (รอ 15–45 นาที)")
-
 # ──── Chat History ────
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -199,18 +280,10 @@ for msg in st.session_state.messages:
         else:
             st.markdown(msg["content"])
 
-# ──── Resume in-flight request (survives Streamlit reruns) ────
-if st.session_state.chat_processing and st.session_state.pending_chat:
-    pending = st.session_state.pending_chat
+# ──── Active job progress (polls every 3s; survives refresh via re-attach) ────
+if st.session_state.active_job_id:
     with st.chat_message("assistant"):
-        _execute_chat_request(
-            pending["prompt"],
-            pending["mode"],
-            pending.get("theme"),
-            pending.get("theme_id"),
-        )
-    if st.session_state.pending_approval:
-        st.rerun()
+        poll_active_job()
 
 # ──── Approval / Promotion Panels ────
 if st.session_state.pending_approval:
@@ -220,11 +293,8 @@ if st.session_state.get("promotion_preview"):
     render_promotion_panel()
 
 # ──── Chat Input ────
-if not st.session_state.chat_processing:
-    if prompt := st.chat_input(
-        "ถามทีมข้อมูลของคุณ...",
-        disabled=st.session_state.chat_processing,
-    ):
+if not st.session_state.active_job_id:
+    if prompt := st.chat_input("ถามทีมข้อมูลของคุณ..."):
         mode = st.session_state.get("mode", "explore")
         theme = st.session_state.get("theme_input") or None
         theme_id = st.session_state.get("selected_theme_id") or None
@@ -242,12 +312,5 @@ if not st.session_state.chat_processing:
         if not theme_id:
             st.warning("แนะนำ: เลือก Theme ใน sidebar ก่อน (เช่น ฐานข้อมูล SAP HANA สำหรับ CE1SATG)")
 
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        st.session_state.pending_chat = {
-            "prompt": prompt,
-            "mode": mode,
-            "theme": theme,
-            "theme_id": theme_id,
-        }
-        st.session_state.chat_processing = True
+        _submit_question(prompt, mode, theme, theme_id)
         st.rerun()

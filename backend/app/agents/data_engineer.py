@@ -1,21 +1,17 @@
 from langchain_core.messages import AIMessage
-from langchain_ollama import ChatOllama
 
 from backend.app.agents.skill_loader import load_agent_skill
 from backend.app.agents.state import AgentState
-from backend.app.core.config import get_settings
+from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
-from backend.app.services.fabric_sql import fabric_is_available, get_fabric_schema_text, run_fabric_sql
+from backend.app.services.fabric_sql import (
+    fabric_is_available,
+    get_fabric_schema_text_async,
+    run_fabric_sql_async,
+)
 from backend.app.services.semantic_store import read_semantic_layer
 
-settings = get_settings()
-
-llm = ChatOllama(
-    base_url=settings.ollama_base_url,
-    model=settings.ollama_model,
-    temperature=0,
-    timeout=settings.ollama_timeout,
-)
+llm = make_chat_ollama(temperature=0)
 
 SYSTEM_PROMPT = """{skill}
 
@@ -56,7 +52,7 @@ async def data_engineer_node(state: AgentState) -> dict:
     logger.info("Data Engineer agent invoked thread=%s", state.thread_id)
 
     semantic_layer = await read_semantic_layer()
-    db_schema = get_fabric_schema_text() if fabric_is_available() else "(Fabric not configured)"
+    db_schema = await get_fabric_schema_text_async() if fabric_is_available() else "(Fabric not configured)"
     skill = load_agent_skill("data_engineer")
     discovery_ctx = state.discovery_context or "(none)"
     knowledge_ctx = state.knowledge_context or "(none)"
@@ -82,12 +78,14 @@ async def data_engineer_node(state: AgentState) -> dict:
         for m in state.messages[-5:]
     ]
 
+    step_errors: list[str] = []
     try:
         response = await llm.ainvoke(messages)
         content: str = response.content  # type: ignore[assignment]
     except Exception as e:
-        logger.error("Data Engineer LLM call failed: %s", e)
+        logger.exception("Data Engineer LLM call failed")
         content = f"Data Engineer error: {e}"
+        step_errors.append(f"data_engineer: {e}")
 
     if fabric_is_available() and "SQL:" in content:
         import re
@@ -96,10 +94,12 @@ async def data_engineer_node(state: AgentState) -> dict:
         sql = match.group(1).strip() if match else ""
         if sql:
             try:
-                result = run_fabric_sql(sql, mode=state.mode, max_rows=5)
+                result = await run_fabric_sql_async(sql, mode=state.mode, max_rows=5)
                 content += f"\n\nSQL_RESULT:\n{result.get('rows', [])}"
             except Exception as e:
+                logger.exception("Data Engineer inspection SQL failed")
                 content += f"\n\nSQL_ERROR: {e}"
+                step_errors.append(f"data_engineer SQL: {e}")
 
     has_semantic_update = (
         "SEMANTIC_UPDATE:" in content
@@ -113,4 +113,5 @@ async def data_engineer_node(state: AgentState) -> dict:
         "semantic_layer": semantic_layer,
         "requires_approval": has_semantic_update,
         "approval_status": "pending" if has_semantic_update else "",
+        "step_errors": step_errors,
     }

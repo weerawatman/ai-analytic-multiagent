@@ -1,8 +1,10 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from backend.app.core.logger import logger
 from backend.app.services.fabric_connector import FabricConnectionError, get_fabric_connector
-from backend.app.services.sql_guard import SQLGuardError
+from backend.app.services.sql_guard import SQLGuardError, validate_read_only_sql
 
 router = APIRouter(prefix="/fabric", tags=["fabric"])
 
@@ -20,7 +22,7 @@ async def fabric_health() -> dict:
         }
 
     try:
-        result = connector.ping()
+        result = await asyncio.to_thread(connector.ping)
         return {
             "connected": True,
             "configured": True,

@@ -5,7 +5,13 @@ from backend.app.agents.state import AgentState
 from backend.app.services import team_memory_store
 
 
-def test_build_phase2_includes_team_memory(temp_storage):
+def test_build_phase2_includes_team_memory(temp_storage, monkeypatch):
+    # No discovery cached in temp_storage → schema pack falls back to a live
+    # Fabric query; stub it so the test doesn't depend on Fabric being active.
+    from backend.app.services import fabric_sql
+
+    monkeypatch.setattr(fabric_sql, "get_fabric_schema_text", lambda limit=40: "(schema preview)")
+
     team_memory_store.finalize_team_memory(
         "sales",
         team_summary="baseline ยอดขาย",

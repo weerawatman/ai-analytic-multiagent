@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from backend.app.schemas.phase2 import DiscoveryRunResponse
@@ -17,7 +19,7 @@ async def get_discovery(theme_id: str) -> dict:
 @router.post("/{theme_id}/run", response_model=DiscoveryRunResponse)
 async def run_theme_discovery(theme_id: str) -> DiscoveryRunResponse:
     try:
-        result = run_discovery(theme_id)
+        result = await asyncio.to_thread(run_discovery, theme_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

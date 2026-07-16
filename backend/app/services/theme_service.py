@@ -10,9 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from langchain_ollama import ChatOllama
-
-from backend.app.core.config import get_settings
+from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 from backend.app.services.fabric_connector import FabricConnectionError, get_fabric_connector
 from backend.app.services.local_paths import get_local_dir
@@ -171,13 +169,7 @@ async def _enrich_themes_with_llm(
     schema_sample: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Optional LLM pass to refine Thai labels and questions."""
-    settings = get_settings()
-    llm = ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        temperature=0.2,
-        timeout=settings.ollama_timeout,
-    )
+    llm = make_chat_ollama(temperature=0.2)
 
     compact_schema = [
         {"schema": r.get("table_schema"), "table": r.get("table_name"), "type": r.get("table_type")}

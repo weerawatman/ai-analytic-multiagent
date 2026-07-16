@@ -1,18 +1,33 @@
-"""Quality test: ask sales 2026 monthly question via chat API."""
+"""Quality test: ask sales 2026 monthly question via the job-based chat API (submit + poll)."""
 
 from __future__ import annotations
 
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
 
 BASE = "http://127.0.0.1:8000"
+POLL_INTERVAL_S = 10
+MAX_WAIT_S = 3600
 
 
-def post_chat(message: str, timeout: int = 1800) -> dict:
+def _request(path: str, *, method: str = "GET", payload: dict | None = None, timeout: int = 30) -> dict:
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(
+        f"{BASE}{path}",
+        data=data,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def submit_chat(message: str) -> str:
     payload = {
         "thread_id": f"quality-test-{uuid.uuid4().hex[:8]}",
         "message": message,
@@ -20,15 +35,25 @@ def post_chat(message: str, timeout: int = 1800) -> dict:
         "theme": "ยอดขายและลูกค้า",
         "theme_id": "sales",
     }
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        f"{BASE}/api/v1/chat/",
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    result = _request("/api/v1/chat/", method="POST", payload=payload)
+    return result["job_id"]
+
+
+def poll_job(job_id: str) -> dict:
+    """Poll the job, printing each step transition, until it reaches a terminal state."""
+    deadline = time.time() + MAX_WAIT_S
+    last_step = None
+    while time.time() < deadline:
+        job = _request(f"/api/v1/jobs/{job_id}")
+        status = job.get("status")
+        step = job.get("current_step")
+        if step != last_step and step:
+            print(f"  [{time.strftime('%H:%M:%S')}] current step: {step}")
+            last_step = step
+        if status not in ("queued", "running"):
+            return job
+        time.sleep(POLL_INTERVAL_S)
+    raise TimeoutError(f"Job {job_id} did not finish within {MAX_WAIT_S}s")
 
 
 def check_quality(content: str) -> dict:
@@ -50,9 +75,11 @@ def check_quality(content: str) -> dict:
 
 
 def main() -> int:
-    print("=== Quality Test: ยอดขาย 2026 รายเดือน ===")
+    print("=== Quality Test: ยอดขาย 2026 รายเดือน (job-based) ===")
     try:
-        result = post_chat("ยอดขายในปี 2026 แต่ละเดือน")
+        job_id = submit_chat("ยอดขายในปี 2026 แต่ละเดือน")
+        print(f"job submitted: {job_id}")
+        job = poll_job(job_id)
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         print(f"Chat failed: {e.code} {body}")
@@ -61,6 +88,14 @@ def main() -> int:
         print(f"Chat failed: {e}")
         return 1
 
+    if job.get("status") != "done":
+        print(f"Job ended with status={job.get('status')} error={job.get('error')}")
+        print("--- step timeline ---")
+        for p in job.get("progress", []):
+            print(f"  {p.get('step')}: {p.get('status')} {p.get('note') or ''}")
+        return 1
+
+    result = job.get("result") or {}
     content = result.get("content", "")
     agent = result.get("agent", "")
     print(f"agent: {agent}")

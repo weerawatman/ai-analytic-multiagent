@@ -1,19 +1,14 @@
 from langchain_core.messages import AIMessage
-from langchain_ollama import ChatOllama
 
 from backend.app.agents.skill_loader import load_agent_skill
 from backend.app.agents.state import AgentState
 from backend.app.core.config import get_settings
+from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 
 settings = get_settings()
 
-llm = ChatOllama(
-    base_url=settings.ollama_base_url,
-    model=settings.ollama_model_ba or settings.ollama_model,
-    temperature=0.2,
-    timeout=settings.ollama_timeout,
-)
+llm = make_chat_ollama(model=settings.ollama_model_ba or None, temperature=0.2)
 
 SYSTEM_PROMPT = """You are a Business Analyst on an AI Data Team presenting to the CEO.
 
@@ -77,15 +72,18 @@ async def business_analyst_node(state: AgentState) -> dict:
         for m in state.messages[-3:]
     ]
 
+    step_errors: list[str] = []
     try:
         response = await llm.ainvoke(messages)
         content: str = response.content  # type: ignore[assignment]
     except Exception as e:
-        logger.error("BA LLM call failed: %s", e)
+        logger.exception("BA LLM call failed")
         content = f"Business Analyst error: {e}"
+        step_errors.append(f"business_analyst: {e}")
 
     return {
         "messages": [AIMessage(content=content, name="business_analyst")],
         "current_agent": "business_analyst",
         "ba_summary": content,
+        "step_errors": step_errors,
     }

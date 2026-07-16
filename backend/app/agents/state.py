@@ -1,3 +1,4 @@
+import operator
 from typing import Annotated, Literal
 from pydantic import BaseModel, Field
 from langgraph.graph.message import add_messages
@@ -47,5 +48,9 @@ class AgentState(BaseModel):
 
     # Quality Bar D payload
     quality_payload: dict = Field(default_factory=dict)
+
+    # Structured per-node errors (accumulated across nodes; nodes also keep
+    # embedding errors in content so pipeline behavior is unchanged)
+    step_errors: Annotated[list[str], operator.add] = Field(default_factory=list)
 
     model_config = {"arbitrary_types_allowed": True}

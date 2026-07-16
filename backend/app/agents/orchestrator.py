@@ -1,5 +1,4 @@
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
@@ -10,17 +9,10 @@ from backend.app.agents.data_engineer import data_engineer_node
 from backend.app.agents.data_scientist import data_scientist_node, explore_critique_node
 from backend.app.agents.quality_node import quality_assembly_node
 from backend.app.agents.state import AgentState
-from backend.app.core.config import get_settings
+from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 
-settings = get_settings()
-
-router_llm = ChatOllama(
-    base_url=settings.ollama_base_url,
-    model=settings.ollama_model,
-    temperature=0,
-    timeout=settings.ollama_timeout,
-)
+router_llm = make_chat_ollama(temperature=0)
 
 ROUTER_PROMPT = """You are a routing agent for an AI Data Team. Based on the user's message,
 decide which specialist agent should handle it.
@@ -49,7 +41,7 @@ async def route_node(state: AgentState) -> dict:
         response = await router_llm.ainvoke(ROUTER_PROMPT.format(message=last_message))
         raw: str = response.content.strip().lower()  # type: ignore[assignment]
     except Exception as e:
-        logger.error("Router LLM call failed: %s", e)
+        logger.exception("Router LLM call failed")
         raw = "data_analyst"
 
     valid_agents = {"data_engineer", "data_analyst", "data_scientist"}

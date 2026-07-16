@@ -69,6 +69,9 @@ class FabricConnector:
             self._connection_string(),
             attrs_before={SQL_COPT_SS_ACCESS_TOKEN: self._token_struct(token)},
         )
+        # Query timeout (SQL_ATTR_QUERY_TIMEOUT) — login timeout is set in the
+        # connection string; without this a heavy query can run unbounded.
+        conn.timeout = self.settings.fabric_query_timeout
         try:
             yield conn
         finally:

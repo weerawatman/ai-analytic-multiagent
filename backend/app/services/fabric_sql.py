@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -20,6 +21,17 @@ def run_fabric_sql(sql: str, *, mode: str = "explore", max_rows: int | None = No
             "ยังไม่ได้ตั้งค่า Fabric ใน .env",
         )
     return connector.execute_read_only(sql, mode=mode, max_rows=max_rows or 20)
+
+
+async def run_fabric_sql_async(
+    sql: str, *, mode: str = "explore", max_rows: int | None = None
+) -> dict[str, Any]:
+    """Run blocking pyodbc work in a thread so slow queries don't freeze the event loop."""
+    return await asyncio.to_thread(run_fabric_sql, sql, mode=mode, max_rows=max_rows)
+
+
+async def get_fabric_schema_text_async(limit: int = 40) -> str:
+    return await asyncio.to_thread(get_fabric_schema_text, limit)
 
 
 def get_fabric_schema_text(limit: int = 40) -> str:

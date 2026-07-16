@@ -71,7 +71,8 @@ Open **two terminals** from the project root:
 
 **Terminal 1 — Backend**
 ```powershell
-.\scripts\run-backend.ps1
+.\scripts\run-backend.ps1        # ปกติ: ไม่มี hot-reload — งานที่กำลังรันไม่ถูกฆ่าเมื่อไฟล์เปลี่ยน
+.\scripts\run-backend.ps1 -Dev   # ตอนพัฒนา: hot-reload (การ save ไฟล์ backend จะฆ่างานที่กำลังรัน)
 ```
 
 **Terminal 2 — Frontend**
@@ -232,7 +233,10 @@ User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/chat/` | Chat with AI Data Team |
+| `POST` | `/api/v1/chat/` | Submit question → **202 + job_id** (poll via jobs API) |
+| `GET` | `/api/v1/jobs/{job_id}` | Job status + per-agent progress + result |
+| `GET` | `/api/v1/jobs/?thread_id=&active=true` | Find active job (UI re-attach) |
+| `POST` | `/api/v1/jobs/{job_id}/cancel` | Cancel a running job |
 | `GET` | `/api/v1/fabric/health` | Fabric connection check |
 | `POST` | `/api/v1/themes/scan` | Schema scan → theme proposals |
 | `GET/POST` | `/api/v1/backlog/` | Insight backlog (JSON) |
@@ -280,6 +284,9 @@ User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
 
 | Issue | Fix |
 |-------|-----|
+| ถามแล้วรอนานไม่ได้คำตอบ | คำถามรันเป็น background job แล้ว — UI แสดง progress รายตำแหน่ง; refresh browser ได้ ระบบ re-attach อัตโนมัติ (thread เดิมอยู่ใน URL) |
+| อยากดูว่างานพังเพราะอะไร | ดู `data/local/logs/backend.log` (มี stack trace) หรือ `GET /api/v1/jobs/{job_id}` ดู step timeline |
+| Backend restart กลางคัน | งานที่ค้างถูก mark เป็น failed ตอน start ใหม่ — คำตอบบางส่วนของ agent ที่เสร็จแล้วยังอยู่ในประวัติแชท |
 | Fabric not configured | Fill `FABRIC_*` in `.env`; restart backend |
 | `Invalid client secret` | Use secret **Value**, not Secret ID |
 | Wrong tables / workspace | Copy connection string from the **correct** Warehouse; grant SP in that workspace |

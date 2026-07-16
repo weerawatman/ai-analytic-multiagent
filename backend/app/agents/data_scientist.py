@@ -1,19 +1,11 @@
 from langchain_core.messages import AIMessage
-from langchain_ollama import ChatOllama
 
 from backend.app.agents.skill_loader import load_agent_skill
 from backend.app.agents.state import AgentState
-from backend.app.core.config import get_settings
+from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 
-settings = get_settings()
-
-llm = ChatOllama(
-    base_url=settings.ollama_base_url,
-    model=settings.ollama_model,
-    temperature=0.2,
-    timeout=settings.ollama_timeout,
-)
+llm = make_chat_ollama(temperature=0.2)
 
 CRITIQUE_PROMPT = """{skill}
 
@@ -80,17 +72,20 @@ async def explore_critique_node(state: AgentState) -> dict:
         }
     ]
 
+    step_errors: list[str] = []
     try:
         response = await llm.ainvoke(messages)
         content: str = response.content  # type: ignore[assignment]
     except Exception as e:
-        logger.error("Critique LLM failed: %s", e)
+        logger.exception("Critique LLM failed")
         content = f"CRITIQUE: ไม่สามารถ critique ได้: {e}"
+        step_errors.append(f"explore_critique: {e}")
 
     return {
         "messages": [AIMessage(content=content, name="data_scientist")],
         "current_agent": "data_scientist",
         "analysis_summary": content,
+        "step_errors": step_errors,
     }
 
 
@@ -113,16 +108,19 @@ async def data_scientist_node(state: AgentState) -> dict:
         for m in state.messages[-5:]
     ]
 
+    step_errors: list[str] = []
     try:
         response = await llm.ainvoke(messages)
         content: str = response.content  # type: ignore[assignment]
     except Exception as e:
-        logger.error("Data Scientist LLM call failed: %s", e)
+        logger.exception("Data Scientist LLM call failed")
         content = f"Data Scientist error: {e}"
+        step_errors.append(f"data_scientist: {e}")
 
     return {
         "messages": [AIMessage(content=content, name="data_scientist")],
         "current_agent": "data_scientist",
         "analysis_summary": content,
         "final_answer": content,
+        "step_errors": step_errors,
     }

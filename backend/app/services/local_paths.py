@@ -38,6 +38,7 @@ def ensure_local_structure(settings: Settings | None = None) -> None:
         "briefings",
         "themes",
         "team_memory",
+        "logs",
     ):
         (local / name).mkdir(parents=True, exist_ok=True)
 

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     fabric_client_secret: str = ""
     fabric_odbc_driver: str = "ODBC Driver 18 for SQL Server"
     fabric_connection_timeout: int = 30
+    fabric_query_timeout: int = 300
     fabric_max_rows: int = 100
 
     # Ollama (native Windows defaults)
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5-coder:14b"
     ollama_model_analyst: str = ""
     ollama_model_ba: str = ""
+    ollama_num_ctx: int = 16384
+    ollama_num_predict: int | None = None
 
     # FastAPI
     fastapi_host: str = "127.0.0.1"

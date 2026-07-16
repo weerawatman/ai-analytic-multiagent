@@ -1,12 +1,14 @@
+import asyncio
+
 from langchain_core.messages import AIMessage
-from langchain_ollama import ChatOllama
 
 from backend.app.agents.skill_loader import load_agent_skill
 from backend.app.agents.state import AgentState
 from backend.app.core.config import get_settings
+from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 from backend.app.services.discovery_service import format_schema_context_pack
-from backend.app.services.fabric_sql import fabric_is_available, run_fabric_sql
+from backend.app.services.fabric_sql import fabric_is_available, run_fabric_sql_async
 from backend.app.services.semantic_store import read_trusted_layer
 
 
@@ -36,12 +38,7 @@ EXPLORE MODE RULES:
 
 settings = get_settings()
 
-llm = ChatOllama(
-    base_url=settings.ollama_base_url,
-    model=settings.ollama_model_analyst or settings.ollama_model,
-    temperature=0,
-    timeout=settings.ollama_timeout,
-)
+llm = make_chat_ollama(model=settings.ollama_model_analyst or None, temperature=0)
 
 SYSTEM_PROMPT = """You are a Data Analyst on an AI Data Team connected to Microsoft Fabric Data Warehouse (T-SQL).
 
@@ -121,7 +118,7 @@ Fix the SQL. Return corrected SQL only in a ```sql block."""
         response = await llm.ainvoke(retry_prompt)
         fixed = _extract_sql(str(response.content))
         if fixed:
-            result = run_fabric_sql(fixed, mode="explore", max_rows=10)
+            result = await run_fabric_sql_async(fixed, mode="explore", max_rows=10)
             return content + f"\n\nSQL_RETRY:\n{fixed}\n\nQUERY_RESULT:\n{result.get('rows', [])}", fixed
     except Exception as exc:
         logger.warning("SQL retry failed: %s", exc)
@@ -132,12 +129,12 @@ async def data_analyst_node(state: AgentState) -> dict:
     logger.info("Data Analyst agent invoked thread=%s mode=%s", state.thread_id, state.mode)
 
     theme_id = state.theme_id or ""
-    db_schema = (
-        state.discovery_context
-        or format_schema_context_pack(theme_id or None)
-        if fabric_is_available()
-        else "(Fabric not configured)"
-    )
+    if fabric_is_available():
+        db_schema = state.discovery_context or await asyncio.to_thread(
+            format_schema_context_pack, theme_id or None
+        )
+    else:
+        db_schema = "(Fabric not configured)"
     trusted = await read_trusted_layer()
     relevant_metrics = _filter_trusted_metrics(trusted, state.theme or None)
     trusted_text = str(relevant_metrics)[:2000]
@@ -178,21 +175,24 @@ async def data_analyst_node(state: AgentState) -> dict:
         for m in state.messages[-5:]
     ]
 
+    step_errors: list[str] = []
     try:
         response = await llm.ainvoke(messages)
         content: str = response.content  # type: ignore[assignment]
     except Exception as e:
-        logger.error("Data Analyst LLM call failed: %s", e)
+        logger.exception("Data Analyst LLM call failed")
         content = f"Data Analyst error: {e}"
+        step_errors.append(f"data_analyst: {e}")
 
     sql = _extract_sql(content)
     if sql and fabric_is_available():
         try:
-            result = run_fabric_sql(sql, mode=state.mode, max_rows=10)
+            result = await run_fabric_sql_async(sql, mode=state.mode, max_rows=10)
             content += f"\n\nQUERY_RESULT:\n{result.get('rows', [])}"
         except Exception as e:
-            logger.error("Fabric SQL execution failed: %s", e)
+            logger.exception("Fabric SQL execution failed")
             content += f"\n\nSQL_ERROR: {e}"
+            step_errors.append(f"data_analyst SQL: {e}")
             if "Invalid column name" in str(e) or "42S22" in str(e):
                 content, sql = await _retry_sql_with_error(content, sql, str(e), db_schema)
 
@@ -201,4 +201,5 @@ async def data_analyst_node(state: AgentState) -> dict:
         "current_agent": "data_analyst",
         "generated_sql": sql,
         "query_result": content,
+        "step_errors": step_errors,
     }

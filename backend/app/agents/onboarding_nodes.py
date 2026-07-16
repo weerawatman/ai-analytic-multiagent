@@ -10,20 +10,13 @@ from langchain_core.messages import AIMessage
 from langchain_ollama import ChatOllama
 
 from backend.app.agents.skill_loader import load_agent_skill
-from backend.app.core.config import get_settings
+from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 from backend.app.services.team_memory_store import update_role_artifact
 
-settings = get_settings()
-
 
 def _llm() -> ChatOllama:
-    return ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        temperature=0.1,
-        timeout=settings.ollama_timeout,
-    )
+    return make_chat_ollama(temperature=0.1)
 
 
 def _parse_json_block(text: str) -> dict[str, Any]:

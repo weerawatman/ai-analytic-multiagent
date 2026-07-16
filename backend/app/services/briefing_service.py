@@ -8,9 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from langchain_ollama import ChatOllama
-
-from backend.app.core.config import get_settings
+from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 from backend.app.services.discovery_service import format_schema_context_pack, load_discovery
 from backend.app.services.knowledge_store import format_knowledge_context
@@ -84,13 +82,7 @@ def _heuristic_briefs(role: str, discovery: dict[str, Any]) -> list[dict[str, An
 
 
 async def _generate_role_briefs(role: str, context: str) -> list[dict[str, Any]]:
-    settings = get_settings()
-    llm = ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        temperature=0.2,
-        timeout=settings.ollama_timeout,
-    )
+    llm = make_chat_ollama(temperature=0.2)
     prompt = ROLE_PROMPTS[role].format(context=context[:4000])
     try:
         response = await llm.ainvoke(prompt)
