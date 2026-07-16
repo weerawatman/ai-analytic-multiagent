@@ -7,6 +7,7 @@ from backend.app.core.logger import logger
 from backend.app.schemas.chat import ChatRequest, ChatResponse
 from backend.app.schemas.backlog import BacklogItemResponse
 from backend.app.services import chat_store
+from backend.app.services.chat_lock import thread_lock
 from backend.app.services.quality_assembly import save_quality_to_backlog
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -15,6 +16,18 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """Send a message to the AI Data Team."""
+    lock = thread_lock(request.thread_id)
+    if lock.locked():
+        raise HTTPException(
+            status_code=409,
+            detail="Thread is still processing a previous question — wait for it to finish",
+        )
+
+    async with lock:
+        return await _run_chat(request)
+
+
+async def _run_chat(request: ChatRequest) -> ChatResponse:
     logger.info(
         "Chat request: thread=%s mode=%s message=%s...",
         request.thread_id,
@@ -64,7 +77,11 @@ async def chat(request: ChatRequest) -> ChatResponse:
             pending_action="semantic_layer_update",
         )
 
-    answer = state.final_answer or "No response generated."
+    answer = state.final_answer or state.query_result or state.ba_summary or ""
+    if not answer.strip():
+        answer = (
+            "[ไม่มีข้อความตอบจาก agent — ลองใช้ Explore mode และเลือก theme ที่มี CE1SATG ก่อนถามใหม่]"
+        )
     quality_payload = state.quality_payload or None
     quality_gaps = quality_payload.get("quality_gaps") if quality_payload else None
 
