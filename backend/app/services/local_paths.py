@@ -1,5 +1,6 @@
 """Resolve local data directory paths and ensure structure exists."""
 
+import json
 from pathlib import Path
 
 from backend.app.core.config import Settings, get_settings
@@ -43,3 +44,26 @@ def ensure_local_structure(settings: Settings | None = None) -> None:
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(default, encoding="utf-8")
+
+    sql_ref = local / "knowledge" / "sql_reference"
+    for sub in (
+        "SAPHANADB/Tables",
+        "SAPHANADB/StoredProcedures",
+    ):
+        (sql_ref / sub).mkdir(parents=True, exist_ok=True)
+
+    manifest_path = sql_ref / "_manifest.json"
+    if not manifest_path.exists():
+        template_path = get_templates_dir(settings) / "sql_reference" / "_manifest.template.json"
+        if template_path.exists():
+            data = json.loads(template_path.read_text(encoding="utf-8"))
+            data["items"] = []
+            manifest_path.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+        else:
+            manifest_path.write_text(
+                '{"version": "1.0", "warehouse": "WH_Silver", "items": []}\n',
+                encoding="utf-8",
+            )

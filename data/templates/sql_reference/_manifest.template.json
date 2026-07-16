@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "warehouse": "WH_Silver",
+  "updated_at": "2026-01-01T00:00:00Z",
+  "items": [
+    {
+      "id": "vbrk_all_cleaned",
+      "schema": "SAPHANADB",
+      "table_ref": "SAPHANADB.VBRK_All_Cleaned",
+      "file_path": "SAPHANADB/Tables/VBRK_All_Cleaned.sql",
+      "kind": "table_ddl",
+      "description_th": "DDL / cleaned table definition — Billing Document Header",
+      "themes": ["billing_revenue"],
+      "tags": ["billing", "header", "vbrk"]
+    },
+    {
+      "id": "usp_load_vbrk_month",
+      "schema": "SAPHANADB",
+      "table_ref": "SAPHANADB.usp_Load_VBRK_Month",
+      "file_path": "SAPHANADB/StoredProcedures/usp_Load_VBRK_Month.sql",
+      "kind": "load_sp",
+      "description_th": "Stored procedure โหลด VBRK รายเดือน",
+      "themes": ["billing_revenue"],
+      "tags": ["billing", "load", "vbrk", "monthly"]
+    }
+  ]
+}
