@@ -105,12 +105,31 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         or combined[:500]
     )
 
+    scientist_critique = (
+        _extract_section(state.analysis_summary, "CRITIQUE")
+        or state.analysis_summary[:2000]
+        if state.analysis_summary
+        else ""
+    )
+
     payload = {
         "theme": state.theme or "",
         "mode": state.mode or "explore",
         "question_th": last_question,
         "answer_summary_th": answer_summary[:2000],
         "ba_summary_th": (state.ba_summary or "")[:2000],
+        "scientist_critique_th": scientist_critique[:2000],
+        "de_context_th": (state.schema_info or "")[:1500],
+        "agents_involved": [
+            r
+            for r, val in (
+                ("data_engineer", state.schema_info),
+                ("data_analyst", state.query_result),
+                ("data_scientist", state.analysis_summary),
+                ("business_analyst", state.ba_summary),
+            )
+            if val
+        ],
         "sql_primary": sql_primary,
         "sql_alternative": sql_alternative,
         "assumptions": assumptions,
@@ -150,8 +169,14 @@ def format_explore_response_th(payload: dict[str, Any]) -> str:
         "### คำถามที่ควรถาม BA/DA",
         *[f"- {q}" for q in payload.get("questions_for_ba_da", [])],
     ]
+    if payload.get("scientist_critique_th"):
+        lines += [
+            "",
+            "### มุม Data Scientist (DS — sanity & critique)",
+            payload["scientist_critique_th"],
+        ]
     if payload.get("ba_summary_th"):
-        lines += ["", "### มุมธุรกิจ (BA)", payload["ba_summary_th"]]
+        lines += ["", "### มุม Business Analyst (BA)", payload["ba_summary_th"]]
     if payload.get("sample_preview"):
         lines += ["", "### ตัวอย่างข้อมูล", f"```json\n{payload['sample_preview']}\n```"]
     return "\n".join(lines)

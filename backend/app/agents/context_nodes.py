@@ -8,6 +8,7 @@ from backend.app.services.sql_reference_store import (
     format_sql_reference_context,
     get_table_refs_for_theme,
 )
+from backend.app.services.team_memory_store import format_team_memory_context
 
 
 def _table_refs_for_theme(theme_id: str, discovery_text: str) -> list[str]:
@@ -26,11 +27,13 @@ def build_phase2_context(state: AgentState) -> dict[str, str]:
     feedback = format_feedback_context(theme_id or None)
     table_refs = _table_refs_for_theme(theme_id, discovery)
     sql_ref = format_sql_reference_context(table_refs, theme_id=theme_id or None)
+    team_memory = format_team_memory_context(theme_id or None)
     return {
         "discovery_context": discovery,
         "knowledge_context": knowledge,
         "sql_reference_context": sql_ref,
         "ceo_feedback_context": feedback,
+        "team_memory_context": team_memory,
     }
 
 
@@ -68,6 +71,9 @@ Knowledge:
 
 WH_Silver SQL Reference (authoritative column names):
 {state.sql_reference_context or '(none)'}
+
+Team memory (onboarding baseline):
+{state.team_memory_context or '(none)'}
 
 Summarize STRUCTURE, QUALITY, RELATIONSHIPS for the analyst. Thai + English table names.
 Keep under 800 words."""

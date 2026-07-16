@@ -31,6 +31,9 @@ Knowledge layer:
 CEO feedback to apply:
 {ceo_feedback_context}
 
+Team memory (onboarding baseline):
+{team_memory_context}
+
 Analyst output:
 {query_result}
 
@@ -64,6 +67,7 @@ async def business_analyst_node(state: AgentState) -> dict:
                 discovery_context=state.discovery_context or "(none)",
                 knowledge_context=state.knowledge_context or "(none)",
                 ceo_feedback_context=state.ceo_feedback_context or "(none)",
+                team_memory_context=state.team_memory_context or "(none)",
                 query_result=state.query_result[:3000] if state.query_result else "(none)",
                 analysis_summary=state.analysis_summary[:2000] if state.analysis_summary else "(none)",
             ),

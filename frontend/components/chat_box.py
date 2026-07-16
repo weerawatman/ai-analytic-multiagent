@@ -1,5 +1,13 @@
 import streamlit as st
 
+AGENT_LABELS = {
+    "data_engineer": "🔧 DE",
+    "data_analyst": "📈 DA",
+    "data_scientist": "🧪 DS",
+    "business_analyst": "💼 BA",
+    "ai_data_team": "👥 AI Data Team",
+}
+
 
 def render_mode_badge(mode: str) -> None:
     if mode == "trusted":
@@ -8,7 +16,21 @@ def render_mode_badge(mode: str) -> None:
         st.markdown("🟡 **Draft · Explore** — รอ validate กับ BA/DA")
 
 
-def render_assistant_message(content: str, agent: str, mode: str) -> None:
+def render_team_agents(agents_involved: list[str] | None) -> None:
+    if not agents_involved:
+        return
+    labels = [AGENT_LABELS.get(a, a) for a in agents_involved]
+    st.caption("ทีมที่ร่วมตอบ: " + " → ".join(labels))
+
+
+def render_assistant_message(
+    content: str,
+    agent: str,
+    mode: str,
+    agents_involved: list[str] | None = None,
+) -> None:
     render_mode_badge(mode)
-    st.markdown(f"**[{agent}]**")
+    label = AGENT_LABELS.get(agent, agent)
+    st.markdown(f"**[{label}]**")
+    render_team_agents(agents_involved)
     st.markdown(content)

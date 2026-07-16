@@ -68,19 +68,25 @@ async def chat(request: ChatRequest) -> ChatResponse:
     quality_payload = state.quality_payload or None
     quality_gaps = quality_payload.get("quality_gaps") if quality_payload else None
 
+    agents_involved = (
+        quality_payload.get("agents_involved", []) if quality_payload else []
+    )
+    display_agent = "ai_data_team" if len(agents_involved) >= 2 else state.current_agent
+
     chat_store.add_message(
         request.thread_id,
         role="assistant",
         content=answer,
-        agent=state.current_agent,
+        agent=display_agent,
         mode=request.mode,
         theme=request.theme,
     )
 
     return ChatResponse(
         thread_id=request.thread_id,
-        agent=state.current_agent,
+        agent=display_agent,
         content=answer,
+        agents_involved=agents_involved,
         requires_approval=False,
         quality_payload=quality_payload if quality_payload else None,
         quality_gaps=quality_gaps,

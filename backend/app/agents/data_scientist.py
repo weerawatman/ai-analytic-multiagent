@@ -29,6 +29,9 @@ Knowledge:
 CEO feedback:
 {ceo_feedback_context}
 
+Team memory:
+{team_memory_context}
+
 Analyst output:
 {query_result}
 
@@ -71,6 +74,7 @@ async def explore_critique_node(state: AgentState) -> dict:
                 discovery_context=state.discovery_context or "(none)",
                 knowledge_context=state.knowledge_context or "(none)",
                 ceo_feedback_context=state.ceo_feedback_context or "(none)",
+                team_memory_context=state.team_memory_context or "(none)",
                 query_result=state.query_result,
             ),
         }

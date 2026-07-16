@@ -160,6 +160,48 @@ def _check_knowledge_entries_optional() -> dict[str, Any]:
     )
 
 
+def _check_team_memory_optional() -> dict[str, Any]:
+    memory_dir = get_local_dir() / "team_memory"
+    files = list(memory_dir.glob("*.json")) if memory_dir.exists() else []
+    passed = len(files) >= 1
+    return _check(
+        "P25-1-team-memory",
+        "Team memory from onboarding (Phase 2.5)",
+        passed,
+        f"{len(files)} team_memory file(s)" if passed else "Select theme and complete onboarding",
+        manual_note="Team Memory panel should show 4 role handoffs",
+    )
+
+
+def _check_onboarding_module() -> dict[str, Any]:
+    paths = [
+        get_project_root() / "backend" / "app" / "services" / "team_memory_store.py",
+        get_project_root() / "backend" / "app" / "services" / "onboarding_service.py",
+        get_project_root() / "backend" / "app" / "services" / "feedback_router.py",
+        get_project_root() / "backend" / "app" / "agents" / "onboarding_graph.py",
+    ]
+    missing = [str(p.name) for p in paths if not p.exists()]
+    passed = not missing
+    return _check(
+        "P25-2-modules",
+        "Phase 2.5 onboarding + feedback router modules",
+        passed,
+        "All modules present" if passed else f"Missing: {', '.join(missing)}",
+    )
+
+
+def _check_team_memory_in_context() -> dict[str, Any]:
+    path = get_project_root() / "backend" / "app" / "agents" / "context_nodes.py"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    passed = "team_memory_context" in text and "format_team_memory_context" in text
+    return _check(
+        "P25-3-context",
+        "Team memory injected in agent context",
+        passed,
+        "team_memory_context wired" if passed else "Missing team memory in context_nodes",
+    )
+
+
 async def run_phase2_validation() -> dict[str, Any]:
     """Run all Phase 2 DoD checks and return structured report."""
     checks = [
@@ -173,6 +215,9 @@ async def run_phase2_validation() -> dict[str, Any]:
         _check_discovery_cache_optional(),
         _check_ceo_feedback_optional(),
         _check_knowledge_entries_optional(),
+        _check_onboarding_module(),
+        _check_team_memory_in_context(),
+        _check_team_memory_optional(),
     ]
 
     passed_count = sum(1 for c in checks if c["passed"])

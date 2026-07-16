@@ -49,7 +49,7 @@ def render_theme_panel() -> None:
                 st.session_state.selected_theme_id = theme["id"]
                 st.session_state.theme_input = theme["name_th"]
                 st.session_state.selected_theme = theme
-                _run_discovery_and_briefings(theme)
+                _run_discovery_and_onboarding(theme)
                 st.rerun()
 
     if st.session_state.get("selected_theme"):
@@ -59,10 +59,10 @@ def render_theme_panel() -> None:
             st.caption(disc)
 
 
-def _run_discovery_and_briefings(theme: dict) -> None:
+def _run_discovery_and_onboarding(theme: dict) -> None:
     theme_id = theme["id"]
     theme_name = theme.get("name_th", "")
-    with st.spinner("ทีมกำลังเรียนรู้ข้อมูล... (Discovery Pipeline)"):
+    with st.spinner("ทีมกำลังเรียนรู้ข้อมูล... (Discovery + Onboarding — อาจใช้เวลา 20-40 นาที)"):
         try:
             result = post_json(f"/api/v1/discovery/{theme_id}/run", {})
             tables = result.get("tables_profiled", 0)
@@ -72,5 +72,15 @@ def _run_discovery_and_briefings(theme: dict) -> None:
                 post_json(f"/api/v1/briefings/{theme_id}/generate?theme_name={name_q}", {})
             except Exception:
                 pass
+            try:
+                onboard = post_json(
+                    f"/api/v1/onboarding/{theme_id}/run?theme_name={quote(theme_name)}",
+                    {},
+                )
+                st.session_state.discovery_status += (
+                    f" · Onboarding: {onboard.get('status', 'done')}"
+                )
+            except Exception as exc:
+                st.session_state.discovery_status += f" · Onboarding: ล้มเหลว ({exc})"
         except Exception as exc:
             st.session_state.discovery_status = f"Discovery ล้มเหลว: {exc}"

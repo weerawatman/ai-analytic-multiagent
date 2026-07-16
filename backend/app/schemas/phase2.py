@@ -47,6 +47,28 @@ class FeedbackCreate(BaseModel):
 class FeedbackResponse(BaseModel):
     theme_id: str
     entries: list[dict]
+    routed: list[str] = Field(default_factory=list)
+
+
+class OnboardingResponse(BaseModel):
+    theme_id: str
+    theme_name: str | None = None
+    status: str
+    team_summary: str = ""
+    recommended_tables: list[str] = Field(default_factory=list)
+    key_metrics: list[str] = Field(default_factory=list)
+    roles: dict = Field(default_factory=dict)
+
+
+class TeamMemoryResponse(BaseModel):
+    theme_id: str
+    theme_name: str | None = None
+    status: str = "pending"
+    onboarded_at: str | None = None
+    team_summary: str = ""
+    recommended_tables: list[str] = Field(default_factory=list)
+    key_metrics: list[str] = Field(default_factory=list)
+    roles: dict = Field(default_factory=dict)
 
 
 class SapTableImportRequest(BaseModel):

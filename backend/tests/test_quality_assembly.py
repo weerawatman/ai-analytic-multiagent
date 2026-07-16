@@ -23,6 +23,24 @@ def test_build_quality_payload_from_state() -> None:
     assert payload["sql_primary"] == "SELECT 1 AS n"
     assert payload["assumptions"]
     assert payload["questions_for_ba_da"]
+    assert "data_analyst" in payload.get("agents_involved", [])
+    assert "data_scientist" in payload.get("agents_involved", [])
+
+
+def test_format_includes_data_scientist_section() -> None:
+    text = format_explore_response_th(
+        {
+            "answer_summary_th": "สรุป",
+            "sql_primary": "SELECT 1",
+            "assumptions": ["a"],
+            "unknowns": ["u"],
+            "questions_for_ba_da": ["q"],
+            "confidence": "medium",
+            "scientist_critique_th": "CRITIQUE: ควรตรวจ grain รายวัน",
+        }
+    )
+    assert "Data Scientist" in text
+    assert "grain" in text
 
 
 def test_format_explore_response_th() -> None:

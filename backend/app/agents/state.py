@@ -33,6 +33,7 @@ class AgentState(BaseModel):
     knowledge_context: str = ""
     sql_reference_context: str = ""
     ceo_feedback_context: str = ""
+    team_memory_context: str = ""
     role_briefs: list[dict] = Field(default_factory=list)
     use_collaborative_flow: bool = True
 

@@ -162,6 +162,7 @@ def build_graph() -> StateGraph:
         after_analyst,
         {"explore_critique": "explore_critique", "summarize": "summarize"},
     )
+
     builder.add_conditional_edges(
         "explore_critique",
         after_critique_collab,

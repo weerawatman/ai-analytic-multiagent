@@ -14,6 +14,7 @@ from backend.app.api.routes import (
     fabric,
     feedback,
     knowledge,
+    onboarding,
     semantic,
     sessions,
     themes,
@@ -77,6 +78,7 @@ app.include_router(discovery.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(briefings.router, prefix="/api/v1")
 app.include_router(feedback.router, prefix="/api/v1")
+app.include_router(onboarding.router, prefix="/api/v1")
 
 
 @app.get("/health")

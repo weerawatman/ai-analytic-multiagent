@@ -93,14 +93,15 @@ In the UI sidebar, confirm **Fabric connected** before exploring.
 
 1. **Scan schema** → pick a theme (sidebar)
 2. **Discovery runs automatically** — team profiles columns, samples, relationships
-3. **CEO Briefing** (main panel) — review 4-role briefs; approve/reject/comment
-4. **Knowledge panel** — add glossary (e.g. field definitions), targets, join mappings
-5. **(Optional) SAP Table Descriptions** — import DD02T CSV once (see below)
-6. **Explore mode** → ask questions → collaborative pipeline (DE → Analyst → Scientist → BA)
-7. Save **Insight Candidate** → export handoff → BA/DA feedback → **Promote to Trusted**
-8. **Trusted mode** → query using approved definitions
+3. **Team Onboarding (Phase 2.5)** — DE → DA → DS → BA do homework; results in **Team Memory** panel (~20–40 min on first run)
+4. **CEO Briefing** (main panel) — review 4-role briefs; approve/reject/comment (feedback routes to glossary/targets/relationships)
+5. **Knowledge panel** — add glossary (e.g. field definitions), targets, join mappings
+6. **(Optional) SAP Table Descriptions** — import DD02T CSV once (see below)
+7. **Explore mode** → ask questions → collaborative pipeline (DE → Analyst → Scientist → BA) using team memory baseline
+8. Save **Insight Candidate** → export handoff → BA/DA feedback → **Promote to Trusted**
+9. **Trusted mode** → query using approved definitions
 
-Phase 1 backlog/promotion flow still applies; Phase 2 adds discovery, knowledge, and CEO loop.
+Phase 1 backlog/promotion flow still applies; Phase 2 adds discovery, knowledge, and CEO loop. Phase 2.5 adds proactive team onboarding + feedback routing.
 
 ### SAP Table Descriptions (DD02T export)
 
@@ -125,6 +126,24 @@ curl -X POST http://127.0.0.1:8000/api/v1/knowledge/sap-tables/import `
 ```
 
 Data is stored in `data/local/knowledge/sap_tables.db` (SQLite, gitignored). After import, when you select a theme and run discovery, the **Schema Context Pack** includes matched SAP descriptions for theme tables (e.g. `VBRK_All_Cleaned` → `VBRK`).
+
+### Phase 2.5 — Team Onboarding
+
+After discovery, the system runs a **team onboarding graph** (DE → DA → DS → BA) before you ask questions. Output is stored in `data/local/team_memory/{theme_id}.json` and injected into all agent prompts.
+
+**API:**
+
+```powershell
+# Run manually (also triggered when selecting a theme in UI)
+curl -X POST "http://127.0.0.1:8000/api/v1/onboarding/sales/run?theme_name=ยอดขายและลูกค้า"
+
+# View team memory
+curl http://127.0.0.1:8000/api/v1/onboarding/sales
+```
+
+**CEO feedback routing:** Comments on briefs update role-owned stores — DE → relationships, DA → glossary, BA → targets (draft until approved in Knowledge panel).
+
+See `knowledge/05-architecture/phases/phase-2.5.md` for full design.
 
 ### WH_Silver T-SQL Reference (transform / view DDL)
 

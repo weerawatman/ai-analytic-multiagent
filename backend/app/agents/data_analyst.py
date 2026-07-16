@@ -62,6 +62,9 @@ WH_Silver SQL Reference (DDL column names — authoritative):
 CEO feedback:
 {ceo_feedback_context}
 
+Team memory (onboarding baseline — align with this):
+{team_memory_context}
+
 Trusted definitions (if any):
 {trusted_layer}
 
@@ -164,6 +167,7 @@ async def data_analyst_node(state: AgentState) -> dict:
                 knowledge_context=state.knowledge_context or "(none)",
                 sql_reference_context=state.sql_reference_context or "(none)",
                 ceo_feedback_context=state.ceo_feedback_context or "(none)",
+                team_memory_context=state.team_memory_context or "(none)",
                 trusted_layer=trusted_text,
                 schema_info=state.schema_info,
                 mode_rules=mode_rules,

@@ -35,6 +35,9 @@ Knowledge:
 WH_Silver SQL Reference:
 {sql_reference_context}
 
+Team memory (onboarding baseline):
+{team_memory_context}
+
 Current semantic layer:
 {semantic_layer}
 
@@ -58,6 +61,7 @@ async def data_engineer_node(state: AgentState) -> dict:
     discovery_ctx = state.discovery_context or "(none)"
     knowledge_ctx = state.knowledge_context or "(none)"
     sql_ref_ctx = state.sql_reference_context or "(none)"
+    team_ctx = state.team_memory_context or "(none)"
 
     messages = [
         {
@@ -69,6 +73,7 @@ async def data_engineer_node(state: AgentState) -> dict:
                 discovery_context=discovery_ctx,
                 knowledge_context=knowledge_ctx,
                 sql_reference_context=sql_ref_ctx,
+                team_memory_context=team_ctx,
                 semantic_layer=semantic_layer,
             ),
         },

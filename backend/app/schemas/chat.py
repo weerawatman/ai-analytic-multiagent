@@ -15,6 +15,7 @@ class ChatResponse(BaseModel):
     thread_id: str
     agent: str = Field(..., description="Agent that produced the response")
     content: str
+    agents_involved: list[str] = Field(default_factory=list)
     requires_approval: bool = False
     pending_action: str | None = None
     quality_payload: dict[str, Any] | None = None

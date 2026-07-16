@@ -28,7 +28,17 @@ def get_templates_dir(settings: Settings | None = None) -> Path:
 def ensure_local_structure(settings: Settings | None = None) -> None:
     """Create Phase 1+2 local storage folders."""
     local = get_local_dir(settings)
-    for name in ("backlog", "semantic", "exports", "samples", "knowledge", "feedback", "briefings", "themes"):
+    for name in (
+        "backlog",
+        "semantic",
+        "exports",
+        "samples",
+        "knowledge",
+        "feedback",
+        "briefings",
+        "themes",
+        "team_memory",
+    ):
         (local / name).mkdir(parents=True, exist_ok=True)
 
     (local / "knowledge" / "themes").mkdir(parents=True, exist_ok=True)
