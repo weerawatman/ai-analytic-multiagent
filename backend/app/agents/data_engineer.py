@@ -32,6 +32,9 @@ Discovery context:
 Knowledge:
 {knowledge_context}
 
+WH_Silver SQL Reference:
+{sql_reference_context}
+
 Current semantic layer:
 {semantic_layer}
 
@@ -54,6 +57,7 @@ async def data_engineer_node(state: AgentState) -> dict:
     skill = load_agent_skill("data_engineer")
     discovery_ctx = state.discovery_context or "(none)"
     knowledge_ctx = state.knowledge_context or "(none)"
+    sql_ref_ctx = state.sql_reference_context or "(none)"
 
     messages = [
         {
@@ -64,6 +68,7 @@ async def data_engineer_node(state: AgentState) -> dict:
                 db_schema=db_schema,
                 discovery_context=discovery_ctx,
                 knowledge_context=knowledge_ctx,
+                sql_reference_context=sql_ref_ctx,
                 semantic_layer=semantic_layer,
             ),
         },

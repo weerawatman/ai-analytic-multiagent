@@ -4,6 +4,19 @@ from backend.app.agents.state import AgentState
 from backend.app.services.discovery_service import format_schema_context_pack
 from backend.app.services.feedback_store import format_feedback_context
 from backend.app.services.knowledge_store import format_knowledge_context
+from backend.app.services.sql_reference_store import (
+    format_sql_reference_context,
+    get_table_refs_for_theme,
+)
+
+
+def _table_refs_for_theme(theme_id: str, discovery_text: str) -> list[str]:
+    refs = get_table_refs_for_theme(theme_id) if theme_id else []
+    if refs:
+        return refs
+    import re
+
+    return re.findall(r"^##\s+(\S+)", discovery_text, re.MULTILINE)
 
 
 def build_phase2_context(state: AgentState) -> dict[str, str]:
@@ -11,9 +24,12 @@ def build_phase2_context(state: AgentState) -> dict[str, str]:
     discovery = format_schema_context_pack(theme_id or None)
     knowledge = format_knowledge_context(theme=state.theme or theme_id or None)
     feedback = format_feedback_context(theme_id or None)
+    table_refs = _table_refs_for_theme(theme_id, discovery)
+    sql_ref = format_sql_reference_context(table_refs, theme_id=theme_id or None)
     return {
         "discovery_context": discovery,
         "knowledge_context": knowledge,
+        "sql_reference_context": sql_ref,
         "ceo_feedback_context": feedback,
     }
 
@@ -49,6 +65,9 @@ Discovery:
 
 Knowledge:
 {state.knowledge_context or '(none)'}
+
+WH_Silver SQL Reference (authoritative column names):
+{state.sql_reference_context or '(none)'}
 
 Summarize STRUCTURE, QUALITY, RELATIONSHIPS for the analyst. Thai + English table names.
 Keep under 800 words."""

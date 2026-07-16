@@ -56,6 +56,9 @@ Schema Context Pack (columns are authoritative):
 Knowledge layer:
 {knowledge_context}
 
+WH_Silver SQL Reference (DDL column names — authoritative):
+{sql_reference_context}
+
 CEO feedback:
 {ceo_feedback_context}
 
@@ -159,6 +162,7 @@ async def data_analyst_node(state: AgentState) -> dict:
                 mode=state.mode,
                 db_schema=db_schema,
                 knowledge_context=state.knowledge_context or "(none)",
+                sql_reference_context=state.sql_reference_context or "(none)",
                 ceo_feedback_context=state.ceo_feedback_context or "(none)",
                 trusted_layer=trusted_text,
                 schema_info=state.schema_info,
