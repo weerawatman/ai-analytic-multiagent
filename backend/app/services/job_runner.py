@@ -17,7 +17,7 @@ from backend.app.agents.orchestrator import graph
 from backend.app.agents.state import AgentState
 from backend.app.core.logger import logger
 from backend.app.schemas.chat import ChatRequest, ChatResponse
-from backend.app.services import chat_store, job_store
+from backend.app.services import chat_store, consultant_service, job_store
 from backend.app.services.chat_lock import thread_lock
 from backend.app.services.onboarding_service import run_onboarding
 
@@ -124,7 +124,12 @@ def start_chat_job(request: ChatRequest) -> dict[str, Any]:
     return job
 
 
-def _build_chat_result(request: ChatRequest, state: AgentState) -> dict[str, Any]:
+def _build_chat_result(
+    request: ChatRequest,
+    state: AgentState,
+    *,
+    consultant_note: str | None = None,
+) -> dict[str, Any]:
     """Final answer/approval handling — same behavior the old synchronous route had."""
     if state.requires_approval:
         chat_store.add_message(
@@ -162,10 +167,26 @@ def _build_chat_result(request: ChatRequest, state: AgentState) -> dict[str, Any
         theme=request.theme,
     )
 
+    content = answer
+    if consultant_note:
+        chat_store.add_message(
+            request.thread_id,
+            role="assistant",
+            content=consultant_note,
+            agent="consultant",
+            mode=request.mode,
+            theme=request.theme,
+        )
+        content = (
+            answer
+            + "\n\n---\n### 🎓 ความเห็นที่ปรึกษา (Claude)\n"
+            + consultant_note
+        )
+
     return ChatResponse(
         thread_id=request.thread_id,
         agent=display_agent,
-        content=answer,
+        content=content,
         agents_involved=agents_involved,
         requires_approval=False,
         quality_payload=quality_payload,
@@ -226,7 +247,27 @@ async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
 
             snapshot = await graph.aget_state(config)
             state = AgentState(**snapshot.values)
-            result = _build_chat_result(request, state)
+            consultant_note = None
+            if not state.requires_approval and consultant_service.should_review(state):
+                job_store.append_step(job_id, "consultant_review")
+                consultant_note = await consultant_service.review_answer(
+                    request.theme_id or "",
+                    request.theme or "",
+                    request.message,
+                    draft_answer=state.final_answer
+                    or state.query_result
+                    or state.ba_summary
+                    or "",
+                    quality_payload=state.quality_payload or {},
+                    step_errors=state.step_errors,
+                )
+                job_store.finish_step(
+                    job_id,
+                    "consultant_review",
+                    "done" if consultant_note else "failed",
+                    None if consultant_note else "consultant unavailable — skipped",
+                )
+            result = _build_chat_result(request, state, consultant_note=consultant_note)
             job_store.update_job(
                 job_id,
                 status="done",
@@ -279,6 +320,19 @@ async def _run_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> No
         job_store.append_step(job_id, "onboarding")
         result = await run_onboarding(theme_id, theme_name)
         job_store.finish_step(job_id, "onboarding", "done")
+
+        if consultant_service.is_enabled("coach_onboarding"):
+            job_store.append_step(job_id, "consultant_coach")
+            coach = await consultant_service.coach_team(theme_id, theme_name)
+            job_store.finish_step(
+                job_id,
+                "consultant_coach",
+                "done" if coach else "failed",
+                None if coach else "consultant unavailable — skipped",
+            )
+            if coach:
+                result["consultant_coach"] = coach
+
         job_store.update_job(
             job_id,
             status="done",
@@ -299,6 +353,67 @@ async def _run_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> No
     except Exception as e:
         logger.exception("Onboarding job %s failed theme=%s", job_id, theme_id)
         job_store.finish_step(job_id, "onboarding", "failed", str(e))
+        job_store.update_job(
+            job_id,
+            status="failed",
+            error=f"{type(e).__name__}: {e}",
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+
+
+def start_consult_job(theme_id: str, question: str) -> dict[str, Any]:
+    existing = job_store.find_active_job("consult", theme_id)
+    if existing is not None:
+        raise JobConflictError(existing)
+
+    job = job_store.create_job(
+        "consult",
+        theme_id,
+        question=question,
+        params={"theme_id": theme_id},
+    )
+    _track(job["id"], asyncio.create_task(_run_consult_job(job["id"], theme_id, question)))
+    return job
+
+
+async def _run_consult_job(job_id: str, theme_id: str, question: str) -> None:
+    try:
+        job_store.update_job(job_id, status="running", started_at=_utc_now())
+        job_store.append_step(job_id, "consult")
+        advice = await consultant_service.answer_question(theme_id, question)
+        if advice is None:
+            job_store.finish_step(job_id, "consult", "failed", "Consultant unavailable")
+            job_store.update_job(
+                job_id,
+                status="failed",
+                error="Consultant unavailable — ตรวจสอบ ANTHROPIC_API_KEY / เครือข่าย",
+                current_step=None,
+                finished_at=_utc_now(),
+            )
+            return
+
+        job_store.finish_step(job_id, "consult", "done")
+        job_store.update_job(
+            job_id,
+            status="done",
+            result={"advice": advice, "theme_id": theme_id},
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        logger.info("Consult job %s done theme=%s", job_id, theme_id)
+    except asyncio.CancelledError:
+        job_store.update_job(
+            job_id,
+            status="cancelled",
+            error="Job was cancelled",
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        raise
+    except Exception as e:
+        logger.exception("Consult job %s failed theme=%s", job_id, theme_id)
+        job_store.finish_step(job_id, "consult", "failed", str(e))
         job_store.update_job(
             job_id,
             status="failed",

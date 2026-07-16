@@ -71,6 +71,9 @@ WH_Silver SQL Reference (authoritative column names):
 Team memory (onboarding baseline):
 {state.team_memory_context or '(none)'}
 
+CEO feedback:
+{state.ceo_feedback_context or '(none)'}
+
 Summarize STRUCTURE, QUALITY, RELATIONSHIPS for the analyst. Thai + English table names.
 Keep under 800 words."""
 

@@ -48,6 +48,18 @@ class Settings(BaseSettings):
     data_local_dir: str = "data/local"
     data_templates_dir: str = "data/templates"
 
+    # Anthropic external consultant (Claude)
+    anthropic_api_key: str = ""
+    consultant_enabled: bool = False
+    consultant_model: str = "claude-opus-4-8"
+    consultant_max_tokens: int = 16000
+    consultant_timeout: int = 300
+    consultant_max_section_chars: int = 6000
+    consultant_review_chat: bool = True  # โหมด 1
+    consultant_coach_onboarding: bool = True  # โหมด 2
+    consultant_on_demand: bool = True  # โหมด 3
+    consultant_help_when_stuck: bool = True  # โหมด 4
+
     @property
     def fabric_is_configured(self) -> bool:
         return all(
@@ -59,6 +71,10 @@ class Settings(BaseSettings):
                 self.fabric_client_secret,
             ]
         )
+
+    @property
+    def consultant_is_enabled(self) -> bool:
+        return self.consultant_enabled and bool(self.anthropic_api_key)
 
     @property
     def database_url(self) -> str:

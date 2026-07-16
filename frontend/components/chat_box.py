@@ -6,6 +6,7 @@ AGENT_LABELS = {
     "data_scientist": "🧪 DS",
     "business_analyst": "💼 BA",
     "ai_data_team": "👥 AI Data Team",
+    "consultant": "🎓 ที่ปรึกษา (Claude)",
 }
 
 

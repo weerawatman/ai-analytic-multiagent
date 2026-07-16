@@ -1,6 +1,6 @@
 # Phase 3 — Claude External Consultant + Phase B Feedback Parity
 
-> **สถานะ:** แผนพร้อมดำเนินการ (ออกแบบ 2026-07-16, Phase A push แล้วที่ commit `fdf6e04`)
+> **สถานะ:** ดำเนินการเสร็จแล้ว (2026-07-16) — Claude consultant + feedback parity ตามแผน
 > **ผู้ดำเนินการ:** ทำตามแผนนี้ทีละ step ตามลำดับที่ระบุ — ลำดับสำคัญมาก (Task 3.3/3.4 ต้องเสร็จก่อน Task 2 Step 4)
 > **หลักการใหญ่:** Claude ไม่ใช่ engine แทนทีม Local — เป็น **"ที่ปรึกษาภายนอกระดับโลก"** ที่ CEO จ้างมาช่วยให้ทีม AI 4 ตำแหน่ง (DE/DA/DS/BA) เก่งขึ้น ทุกคำแนะนำไหลกลับเข้าระบบ knowledge/team memory เดิมภายใต้ HITL
 

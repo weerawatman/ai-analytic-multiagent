@@ -25,3 +25,14 @@ def temp_storage(tmp_path, monkeypatch):
     init_chat_db()
     yield local
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def consultant_enabled(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("CONSULTANT_ENABLED", "true")
+    from backend.app.core.config import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

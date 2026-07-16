@@ -124,6 +124,15 @@ def append_role_feedback_note(
     return save_team_memory(data)
 
 
+def append_consultant_note(theme_id: str, note: str) -> dict[str, Any]:
+    """Append an on-demand consultant advice note (keep last 20)."""
+    data = get_or_create_team_memory(theme_id)
+    notes = data.setdefault("consultant_notes", [])
+    notes.append({"note": note, "at": _utc_now()})
+    data["consultant_notes"] = notes[-20:]
+    return save_team_memory(data)
+
+
 def finalize_team_memory(
     theme_id: str,
     *,
@@ -192,5 +201,11 @@ def format_team_memory_context(theme_id: str | None) -> str:
             lines.append("CEO feedback on this role:")
             for n in last:
                 lines.append(f"- [{n.get('action')}] {n.get('comment', '')}")
+
+    consultant_notes = data.get("consultant_notes") or []
+    if consultant_notes:
+        lines.append("\n### คำแนะนำที่ปรึกษาภายนอก (Claude)")
+        for n in consultant_notes[-3:]:
+            lines.append(f"- {n.get('note', '')[:800]}")
 
     return "\n".join(lines)

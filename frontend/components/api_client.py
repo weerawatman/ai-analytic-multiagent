@@ -80,3 +80,15 @@ def find_active_job(thread_id: str, kind: str = "chat", timeout: float = 30.0) -
     response.raise_for_status()
     jobs = response.json()
     return jobs[0] if jobs else None
+
+
+def get_consultant_status(timeout: float = 15.0) -> dict:
+    return get_json("/api/v1/consultant/status", timeout=timeout)
+
+
+def submit_consult_job(theme_id: str, question: str, timeout: float = 30.0) -> dict:
+    return post_json(
+        f"/api/v1/consultant/{theme_id}/consult",
+        {"question": question},
+        timeout=timeout,
+    )

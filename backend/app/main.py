@@ -10,6 +10,7 @@ from backend.app.api.routes import (
     backlog,
     briefings,
     chat,
+    consultant,
     discovery,
     fabric,
     feedback,
@@ -86,6 +87,7 @@ app.include_router(briefings.router, prefix="/api/v1")
 app.include_router(feedback.router, prefix="/api/v1")
 app.include_router(onboarding.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
+app.include_router(consultant.router, prefix="/api/v1")
 
 
 @app.get("/health")

@@ -10,6 +10,7 @@ from components.approval_panel import render_approval_panel
 from components.backlog_panel import render_backlog_panel
 from components.ceo_briefing_panel import render_ceo_briefing_panel
 from components.team_memory_panel import render_team_memory_panel
+from components.consultant_panel import render_consultant_panel
 from components.chat_box import render_assistant_message
 from components.knowledge_panel import render_knowledge_panel
 from components.promotion_panel import render_promotion_panel
@@ -39,6 +40,10 @@ STEP_LABELS = {
     "quality_assembly": "✅ Quality Check",
     "summarize": "📝 สรุปคำตอบ",
     "approval_gate": "🚦 รออนุมัติ",
+    "consultant_review": "🎓 ที่ปรึกษา (Claude)",
+    "consultant_coach": "🎓 โค้ชทีม (Claude)",
+    "consult": "🎓 ปรึกษา Claude",
+    "onboarding": "🧠 Onboarding",
 }
 
 
@@ -260,6 +265,7 @@ col_main, col_mode = st.columns([4, 1])
 with col_main:
     if st.session_state.get("selected_theme_id"):
         render_team_memory_panel()
+        render_consultant_panel()
         render_ceo_briefing_panel()
 with col_mode:
     if st.session_state.mode == "explore":

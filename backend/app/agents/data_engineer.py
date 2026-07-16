@@ -34,6 +34,9 @@ WH_Silver SQL Reference:
 Team memory (onboarding baseline):
 {team_memory_context}
 
+CEO Feedback (นำไปปรับการทำงาน):
+{ceo_feedback_context}
+
 Current semantic layer:
 {semantic_layer}
 
@@ -70,6 +73,7 @@ async def data_engineer_node(state: AgentState) -> dict:
                 knowledge_context=knowledge_ctx,
                 sql_reference_context=sql_ref_ctx,
                 team_memory_context=team_ctx,
+                ceo_feedback_context=state.ceo_feedback_context or "(none)",
                 semantic_layer=semantic_layer,
             ),
         },
