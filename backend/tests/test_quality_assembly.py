@@ -8,7 +8,10 @@ from backend.app.services.quality_assembly import (
 )
 
 
-def test_build_quality_payload_from_state() -> None:
+def test_build_quality_payload_from_state(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.services.quality_assembly.fabric_can_query", lambda: False
+    )
     state = AgentState(
         thread_id="t1",
         mode="explore",
@@ -25,6 +28,7 @@ def test_build_quality_payload_from_state() -> None:
     assert payload["questions_for_ba_da"]
     assert "data_analyst" in payload.get("agents_involved", [])
     assert "data_scientist" in payload.get("agents_involved", [])
+    assert payload.get("sample_data_ref") == "skipped_offline"
 
 
 def test_format_includes_data_scientist_section() -> None:

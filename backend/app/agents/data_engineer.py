@@ -5,7 +5,8 @@ from backend.app.agents.state import AgentState
 from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 from backend.app.services.fabric_sql import (
-    fabric_is_available,
+    OFFLINE_SQL_MSG_TH,
+    fabric_can_query,
     get_fabric_schema_text_async,
     run_fabric_sql_async,
 )
@@ -55,9 +56,19 @@ async def data_engineer_node(state: AgentState) -> dict:
     logger.info("Data Engineer agent invoked thread=%s", state.thread_id)
 
     semantic_layer = await read_semantic_layer()
-    db_schema = await get_fabric_schema_text_async() if fabric_is_available() else "(Fabric not configured)"
-    skill = load_agent_skill("data_engineer")
     discovery_ctx = state.discovery_context or "(none)"
+    # Prefer discovery / state schema; only hit live Fabric when reachable
+    if state.discovery_context and state.discovery_context.strip() not in ("", "(none)"):
+        db_schema = state.discovery_context
+    elif state.schema_info:
+        db_schema = state.schema_info
+    else:
+        try:
+            db_schema = await get_fabric_schema_text_async()
+        except Exception as e:
+            logger.warning("DE live schema fetch failed: %s", e)
+            db_schema = f"(Fabric schema ไม่พร้อม: {e} — ใช้ discovery บนดิสก์ถ้ามี)"
+    skill = load_agent_skill("data_engineer")
     knowledge_ctx = state.knowledge_context or "(none)"
     sql_ref_ctx = state.sql_reference_context or "(none)"
     team_ctx = state.team_memory_context or "(none)"
@@ -91,7 +102,7 @@ async def data_engineer_node(state: AgentState) -> dict:
         content = f"Data Engineer error: {e}"
         step_errors.append(f"data_engineer: {e}")
 
-    if fabric_is_available() and "SQL:" in content:
+    if fabric_can_query() and "SQL:" in content:
         import re
 
         match = re.search(r"```sql\s*\n(.*?)```", content, re.DOTALL | re.IGNORECASE)
@@ -104,6 +115,8 @@ async def data_engineer_node(state: AgentState) -> dict:
                 logger.exception("Data Engineer inspection SQL failed")
                 content += f"\n\nSQL_ERROR: {e}"
                 step_errors.append(f"data_engineer SQL: {e}")
+    elif "SQL:" in content:
+        content += f"\n\nSQL_SKIPPED: {OFFLINE_SQL_MSG_TH}"
 
     has_semantic_update = (
         "SEMANTIC_UPDATE:" in content

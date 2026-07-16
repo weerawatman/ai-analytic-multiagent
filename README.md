@@ -86,7 +86,21 @@ Open **two terminals** from the project root:
 | **FastAPI docs** | http://127.0.0.1:8000/docs |
 | **Fabric health** | http://127.0.0.1:8000/api/v1/fabric/health |
 
-In the UI sidebar, confirm **Fabric connected** before exploring.
+In the UI sidebar, check Fabric status. If capacity is paused you can still Explore
+from cached discovery / themes, use Consultant, and Team Memory — live SQL is skipped
+until Fabric is reachable again (or set `FABRIC_SQL_ENABLED=false` to force offline).
+
+### Fabric pause / offline Explore
+
+Works without a live warehouse when these exist under `data/local/`:
+
+- `themes/cached_themes.json` — list themes in the sidebar
+- `knowledge/themes/{theme_id}/discovery.json` — schema context for agents
+- optional: `team_memory/{theme_id}.json`, `knowledge/sql_reference/`, glossary
+
+Still needs: **Ollama** for the local AI team, and (optional) **Anthropic** for Consultant.
+
+Does **not** work offline: Schema scan, fresh Discovery against Fabric, executing SQL for real row samples.
 
 ---
 

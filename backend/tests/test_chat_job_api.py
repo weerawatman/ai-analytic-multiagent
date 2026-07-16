@@ -78,6 +78,9 @@ async def _poll_until_done(client: AsyncClient, job_id: str, timeout: float = 5.
 async def test_chat_submit_and_poll_done(client: AsyncClient, temp_storage, monkeypatch):
     job_store.init_jobs_db()
     monkeypatch.setattr(job_runner, "graph", FakeGraph(_final_state()))
+    monkeypatch.setattr(
+        "backend.app.services.consultant_service.should_review", lambda state: False
+    )
 
     response = await client.post(
         "/api/v1/chat/",
@@ -110,6 +113,9 @@ async def test_duplicate_submit_returns_409_with_job_id(client: AsyncClient, tem
     job_store.init_jobs_db()
     gate = asyncio.Event()
     monkeypatch.setattr(job_runner, "graph", FakeGraph(_final_state(), gate=gate))
+    monkeypatch.setattr(
+        "backend.app.services.consultant_service.should_review", lambda state: False
+    )
 
     first = await client.post(
         "/api/v1/chat/",
@@ -134,6 +140,9 @@ async def test_failing_graph_marks_job_failed(client: AsyncClient, temp_storage,
     job_store.init_jobs_db()
     monkeypatch.setattr(
         job_runner, "graph", FakeGraph(_final_state(), error=RuntimeError("Ollama down"))
+    )
+    monkeypatch.setattr(
+        "backend.app.services.consultant_service.should_review", lambda state: False
     )
 
     response = await client.post(

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     fabric_connection_timeout: int = 30
     fabric_query_timeout: int = 300
     fabric_max_rows: int = 100
+    # When false, skip all live SQL even if credentials are present (Fabric pause / offline Explore)
+    fabric_sql_enabled: bool = True
+    # Seconds to remember a failed ping before retrying (avoid long timeouts on every query)
+    fabric_reachability_ttl_seconds: int = 300
 
     # Ollama (native Windows defaults)
     ollama_base_url: str = "http://127.0.0.1:11434"

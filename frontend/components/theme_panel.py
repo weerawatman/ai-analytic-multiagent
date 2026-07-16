@@ -18,6 +18,7 @@ def render_theme_panel() -> None:
                 st.rerun()
             except Exception as exc:
                 st.error(f"สแกนไม่สำเร็จ: {exc}")
+                st.caption("ถ้าเคยสแกนไว้แล้ว ยังใช้ theme จาก cache ได้ด้านล่าง (ไม่ต้องมี Fabric)")
 
     themes_data = st.session_state.get("themes_data")
     if not themes_data:
@@ -30,7 +31,7 @@ def render_theme_panel() -> None:
 
     themes = themes_data.get("themes", []) if themes_data else []
     if not themes:
-        st.caption("ยังไม่มี theme — กดสแกน Schema เพื่อเริ่ม Explore")
+        st.caption("ยังไม่มี theme — กดสแกน Schema เมื่อ Fabric พร้อม หรือรอให้มี cached_themes.json")
         return
 
     if themes_data.get("scanned_at"):
@@ -50,7 +51,7 @@ def render_theme_panel() -> None:
                 st.session_state.selected_theme_id = theme["id"]
                 st.session_state.theme_input = theme["name_th"]
                 st.session_state.selected_theme = theme
-                _run_discovery_and_onboarding(theme)
+                _select_theme_prefer_cache(theme)
                 st.rerun()
 
     if st.session_state.get("selected_theme"):
@@ -58,6 +59,13 @@ def render_theme_panel() -> None:
         disc = st.session_state.get("discovery_status")
         if disc:
             st.caption(disc)
+        if st.button(
+            "🔄 รัน Discovery/Onboarding ใหม่ (ต้องมี Fabric)",
+            key="refresh_discovery_onboarding",
+            use_container_width=True,
+        ):
+            _run_discovery_and_onboarding(st.session_state.selected_theme)
+            st.rerun()
 
     if st.session_state.get("onboarding_job_id"):
         _poll_onboarding_job()
@@ -90,6 +98,64 @@ def _poll_onboarding_job() -> None:
     st.rerun(scope="app")
 
 
+def _select_theme_prefer_cache(theme: dict) -> None:
+    """Use existing discovery / team memory when present — no Fabric required."""
+    theme_id = theme["id"]
+    theme_name = theme.get("name_th", "")
+    parts: list[str] = []
+
+    discovery_ok = False
+    try:
+        disc = get_json(f"/api/v1/discovery/{theme_id}")
+        if disc:
+            discovery_ok = True
+            profiles = disc.get("profiles") or disc.get("tables") or []
+            n = len(profiles) if isinstance(profiles, list) else 0
+            parts.append(f"Discovery: ใช้ cache บนดิสก์ ({n} ตาราง)")
+    except Exception:
+        parts.append("Discovery: ยังไม่มี cache")
+
+    memory_ok = False
+    try:
+        mem = get_json(f"/api/v1/onboarding/{theme_id}")
+        if mem and mem.get("status") in ("completed", "running"):
+            memory_ok = True
+            parts.append(f"Team Memory: มีแล้ว ({mem.get('status')})")
+    except Exception:
+        parts.append("Team Memory: ยังไม่มี")
+
+    st.session_state.discovery_status = " · ".join(parts) if parts else "เลือก theme แล้ว"
+
+    if discovery_ok and memory_ok:
+        return
+
+    if not discovery_ok:
+        # Need live Fabric for fresh discovery — try once; fail soft
+        st.session_state.discovery_status += " · พยายามรัน Discovery (ต้องมี Fabric)..."
+        _run_discovery_and_onboarding(theme)
+        return
+
+    # Discovery exists but no team memory — try onboarding only (disk + Ollama)
+    try:
+        job = submit_onboarding_job(theme_id, theme_name)
+        st.session_state.onboarding_job_id = job["job_id"]
+        st.session_state.discovery_status += " · Onboarding: กำลังทำงานเบื้องหลัง"
+    except httpx.HTTPStatusError as exc:
+        detail = None
+        if exc.response.status_code == 409:
+            try:
+                detail = exc.response.json().get("detail")
+            except Exception:
+                detail = None
+        if isinstance(detail, dict) and detail.get("job_id"):
+            st.session_state.onboarding_job_id = detail["job_id"]
+            st.session_state.discovery_status += " · Onboarding: กำลังทำงานอยู่แล้ว"
+        else:
+            st.session_state.discovery_status += f" · Onboarding: ข้าม ({exc})"
+    except Exception as exc:
+        st.session_state.discovery_status += f" · Onboarding: ข้าม ({exc})"
+
+
 def _run_discovery_and_onboarding(theme: dict) -> None:
     theme_id = theme["id"]
     theme_name = theme.get("name_th", "")
@@ -99,8 +165,15 @@ def _run_discovery_and_onboarding(theme: dict) -> None:
             tables = result.get("tables_profiled", 0)
             st.session_state.discovery_status = f"Discovery: {tables} ตาราง profile แล้ว"
         except Exception as exc:
-            st.session_state.discovery_status = f"Discovery ล้มเหลว: {exc}"
-            return
+            st.session_state.discovery_status = (
+                f"Discovery ล้มเหลว: {exc} — "
+                "ถ้ามี discovery เดิมอยู่แล้วยัง Explore ได้จาก cache"
+            )
+            # Still try onboarding if discovery already on disk
+            try:
+                get_json(f"/api/v1/discovery/{theme_id}")
+            except Exception:
+                return
         try:
             name_q = quote(theme_name)
             post_json(
@@ -111,7 +184,6 @@ def _run_discovery_and_onboarding(theme: dict) -> None:
         except Exception:
             pass
 
-    # Onboarding runs as a background job — the UI polls instead of blocking.
     try:
         job = submit_onboarding_job(theme_id, theme_name)
         st.session_state.onboarding_job_id = job["job_id"]

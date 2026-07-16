@@ -23,10 +23,12 @@ def render_fabric_status() -> None:
             st.success(f"เชื่อมต่อแล้ว · {data.get('database', '')}")
         elif data.get("configured"):
             detail = data.get("detail_th") or data.get("detail", "เชื่อมต่อไม่สำเร็จ")
-            if "capacity" in str(data.get("detail", "")).lower():
-                st.warning(f"Fabric capacity เต็มชั่วคราว — ลองใหม่ภายหลัง\n\n{detail}")
-            else:
-                st.error(detail)
+            st.warning(
+                "**โหมด Offline / Fabric pause**\n\n"
+                f"{detail}\n\n"
+                "ยังใช้ได้: Explore จาก discovery บนดิสก์ · draft SQL "
+                "(ข้ามรันต่อคลัง) · Consultant · Team Memory / Knowledge"
+            )
         else:
             st.warning("ยังไม่ได้ตั้งค่า Fabric ใน .env")
     except httpx.ConnectError:

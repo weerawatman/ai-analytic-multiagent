@@ -172,15 +172,34 @@ def load_discovery(theme_id: str) -> dict[str, Any] | None:
 
 
 def format_schema_context_pack(theme_id: str | None = None, limit_cols: int = 80) -> str:
-    """Build rich schema text with columns for agent prompts."""
-    if not theme_id:
+    """Build rich schema text with columns for agent prompts.
+
+    Prefers disk discovery. Live Fabric is a last resort and must never crash callers
+    when capacity is paused.
+    """
+    def _live_schema_fallback(reason: str) -> str:
         from backend.app.services.fabric_sql import get_fabric_schema_text
-        return get_fabric_schema_text()
+
+        try:
+            text = get_fabric_schema_text()
+            if text and not text.startswith("(Fabric"):
+                return text
+            return (
+                f"(ไม่มี discovery บนดิสก์ — {reason}. "
+                "เลือก theme ที่มี discovery.json หรือเปิด Fabric capacity แล้วรัน Discovery ใหม่)"
+            )
+        except Exception as exc:
+            return (
+                f"(ไม่มี discovery บนดิสก์และ Fabric ไม่พร้อม: {type(exc).__name__} — "
+                "เลือก theme ที่มี cache หรือรอ Fabric กลับมา)"
+            )
+
+    if not theme_id:
+        return _live_schema_fallback("ไม่ได้ระบุ theme_id")
 
     discovery = load_discovery(theme_id)
     if not discovery:
-        from backend.app.services.fabric_sql import get_fabric_schema_text
-        return get_fabric_schema_text()
+        return _live_schema_fallback(f"ไม่พบ discovery สำหรับ theme {theme_id}")
 
     lines: list[str] = []
     col_count = 0

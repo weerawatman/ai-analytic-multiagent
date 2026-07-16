@@ -7,7 +7,12 @@ from typing import Any
 
 from backend.app.agents.state import AgentState
 from backend.app.services import backlog_store
-from backend.app.services.fabric_sql import format_query_preview, run_fabric_sql
+from backend.app.services.fabric_sql import (
+    OFFLINE_SQL_MSG_TH,
+    fabric_can_query,
+    format_query_preview,
+    run_fabric_sql,
+)
 
 
 def _extract_section(text: str, tag: str) -> str:
@@ -78,19 +83,25 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
     sample_preview = ""
     sample_ref = ""
     if sql_primary:
-        try:
-            primary_result = run_fabric_sql(sql_primary, mode=state.mode or "explore", max_rows=5)
-            sample_preview = format_query_preview(primary_result)
-            sample_ref = "inline"
-        except Exception as exc:
-            sample_preview = f"(รัน SQL ไม่สำเร็จ: {exc})"
+        if not fabric_can_query():
+            sample_preview = f"({OFFLINE_SQL_MSG_TH})"
+            sample_ref = "skipped_offline"
+        else:
+            try:
+                primary_result = run_fabric_sql(sql_primary, mode=state.mode or "explore", max_rows=5)
+                sample_preview = format_query_preview(primary_result)
+                sample_ref = "inline"
+            except Exception as exc:
+                sample_preview = f"(รัน SQL ไม่สำเร็จ: {exc})"
 
-    if sql_alternative and sql_alternative != sql_primary:
+    if sql_alternative and sql_alternative != sql_primary and fabric_can_query():
         try:
             alt_result = run_fabric_sql(sql_alternative, mode=state.mode or "explore", max_rows=5)
             sample_preview += "\n\n--- Sanity check ---\n" + format_query_preview(alt_result)
         except Exception:
             pass
+    elif sql_alternative and sql_alternative != sql_primary and not fabric_can_query():
+        sample_preview += f"\n\n--- Sanity check ---\n({OFFLINE_SQL_MSG_TH})"
 
     last_question = ""
     for m in reversed(state.messages):

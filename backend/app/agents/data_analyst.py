@@ -8,7 +8,7 @@ from backend.app.core.config import get_settings
 from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 from backend.app.services.discovery_service import format_schema_context_pack
-from backend.app.services.fabric_sql import fabric_is_available, run_fabric_sql_async
+from backend.app.services.fabric_sql import OFFLINE_SQL_MSG_TH, fabric_can_query, run_fabric_sql_async
 from backend.app.services.semantic_store import read_trusted_layer
 
 
@@ -129,12 +129,12 @@ async def data_analyst_node(state: AgentState) -> dict:
     logger.info("Data Analyst agent invoked thread=%s mode=%s", state.thread_id, state.mode)
 
     theme_id = state.theme_id or ""
-    if fabric_is_available():
-        db_schema = state.discovery_context or await asyncio.to_thread(
-            format_schema_context_pack, theme_id or None
-        )
-    else:
-        db_schema = "(Fabric not configured)"
+    # Prefer disk discovery always — never discard when Fabric is paused/unconfigured
+    db_schema = state.discovery_context or await asyncio.to_thread(
+        format_schema_context_pack, theme_id or None
+    )
+    if not (db_schema or "").strip() or db_schema.startswith("(no "):
+        db_schema = state.discovery_context or db_schema or "(ไม่มี discovery — เลือก theme ที่มี cache หรือรอ Fabric)"
     trusted = await read_trusted_layer()
     relevant_metrics = _filter_trusted_metrics(trusted, state.theme or None)
     trusted_text = str(relevant_metrics)[:2000]
@@ -185,7 +185,7 @@ async def data_analyst_node(state: AgentState) -> dict:
         step_errors.append(f"data_analyst: {e}")
 
     sql = _extract_sql(content)
-    if sql and fabric_is_available():
+    if sql and fabric_can_query():
         try:
             result = await run_fabric_sql_async(sql, mode=state.mode, max_rows=10)
             content += f"\n\nQUERY_RESULT:\n{result.get('rows', [])}"
@@ -195,6 +195,9 @@ async def data_analyst_node(state: AgentState) -> dict:
             step_errors.append(f"data_analyst SQL: {e}")
             if "Invalid column name" in str(e) or "42S22" in str(e):
                 content, sql = await _retry_sql_with_error(content, sql, str(e), db_schema)
+    elif sql:
+        content += f"\n\nSQL_SKIPPED: {OFFLINE_SQL_MSG_TH}"
+        content += f"\nDRAFT_SQL:\n{sql}"
 
     return {
         "messages": [AIMessage(content=content, name="data_analyst")],
