@@ -26,7 +26,7 @@ exit(0 if report['summary']['ready_for_signoff'] else 1)
 "@
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "`nSome checks failed — complete manual steps in knowledge/07-testing/phase-2-sign-off.md" -ForegroundColor Yellow
+    Write-Host "`nSome checks failed - complete manual steps in knowledge/07-testing/phase-2-sign-off.md" -ForegroundColor Yellow
     exit 1
 }
 

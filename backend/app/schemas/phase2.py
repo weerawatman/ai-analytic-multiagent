@@ -47,3 +47,32 @@ class FeedbackCreate(BaseModel):
 class FeedbackResponse(BaseModel):
     theme_id: str
     entries: list[dict]
+
+
+class SapTableImportRequest(BaseModel):
+    csv_path: str = Field(..., description="Absolute or relative path to SAP_Table_Description.csv")
+    language: str = "E"
+    replace: bool = True
+
+
+class SapTableImportResponse(BaseModel):
+    imported: int
+    skipped: int
+    language: str
+    source_file: str
+    imported_at: str
+
+
+class SapTableStatsResponse(BaseModel):
+    table_count: int
+    imported_at: str | None = None
+    source_file: str | None = None
+    language: str = "E"
+    db_path: str
+
+
+class SapTableLookupResponse(BaseModel):
+    fabric_ref: str | None = None
+    sap_tabname: str | None = None
+    description: str | None = None
+    matched: bool = False

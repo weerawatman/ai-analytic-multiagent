@@ -1,15 +1,23 @@
+import os
+
 import streamlit as st
 
 from components.api_client import get_json, post_json, patch_json
 
+DEFAULT_SAP_CSV = os.path.join(
+    os.path.expanduser("~"),
+    "Downloads",
+    "SAP_Table_Description.csv",
+)
+
 
 def render_knowledge_panel() -> None:
-    """Knowledge layer — glossary, targets, relationships."""
+    """Knowledge layer — glossary, targets, relationships, SAP tables."""
     st.subheader("Knowledge")
 
     theme = st.session_state.get("theme_input") or ""
 
-    tab1, tab2, tab3 = st.tabs(["Glossary", "Targets", "Relationships"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Glossary", "Targets", "Relationships", "SAP Tables"])
 
     with tab1:
         _render_add_form(
@@ -45,6 +53,52 @@ def render_knowledge_panel() -> None:
             ],
         )
         _render_items("relationships", theme)
+
+    with tab4:
+        _render_sap_tables_tab()
+
+
+def _render_sap_tables_tab() -> None:
+    st.caption("นำเข้า SAP DD02T (TABNAME + DDTEXT) จาก CSV — agent จะใช้คำอธิบายตารางใน discovery context")
+
+    try:
+        stats = get_json("/api/v1/knowledge/sap-tables/stats")
+        st.info(
+            f"โหลดแล้ว **{stats.get('table_count', 0):,}** ตาราง"
+            + (f" · {stats['imported_at'][:19]}" if stats.get("imported_at") else "")
+        )
+        if stats.get("source_file"):
+            st.caption(f"ไฟล์ล่าสุด: `{stats['source_file']}`")
+    except Exception as exc:
+        st.caption(f"ยังไม่มีข้อมูล SAP: {exc}")
+
+    csv_path = st.text_input(
+        "Path ไฟล์ CSV",
+        value=DEFAULT_SAP_CSV,
+        key="sap_csv_path",
+    )
+    if st.button("นำเข้า SAP Table Description", key="import_sap_tables"):
+        with st.spinner("กำลัง import... (ไฟล์ใหญ่อาจใช้เวลา 2–5 นาที)"):
+            try:
+                result = post_json(
+                    "/api/v1/knowledge/sap-tables/import",
+                    {"csv_path": csv_path, "language": "E", "replace": True},
+                )
+                st.success(f"นำเข้า {result.get('imported', 0):,} แถว (ข้าม {result.get('skipped', 0):,})")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Import ไม่สำเร็จ: {exc}")
+
+    lookup_ref = st.text_input("ทดสอบ lookup", value="SAPHANADB.VBRK_All_Cleaned", key="sap_lookup")
+    if lookup_ref:
+        try:
+            data = get_json(f"/api/v1/knowledge/sap-tables/lookup/{lookup_ref}")
+            if data.get("matched"):
+                st.success(f"{data['sap_tabname']}: {data['description']}")
+            else:
+                st.warning(f"ไม่พบคำอธิบายสำหรับ {lookup_ref}")
+        except Exception as exc:
+            st.caption(str(exc))
 
 
 def _render_add_form(kind: str, theme: str, fields: list[tuple[str, str]]) -> None:

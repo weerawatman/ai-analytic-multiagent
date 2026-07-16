@@ -205,6 +205,15 @@ def format_schema_context_pack(theme_id: str | None = None, limit_cols: int = 80
         for r in rels[:10]:
             lines.append(f"  - {r['column']}: {', '.join(r['tables'])}")
 
+    table_refs = [p.get("table", "") for p in discovery.get("profiles", []) if p.get("table")]
+    if table_refs:
+        from backend.app.services.sap_table_store import format_sap_tables_context
+
+        sap_ctx = format_sap_tables_context(table_refs)
+        if sap_ctx and not sap_ctx.startswith("(no SAP"):
+            lines.append("")
+            lines.append(sap_ctx)
+
     return "\n".join(lines) if lines else "(no discovery data)"
 
 

@@ -95,11 +95,36 @@ In the UI sidebar, confirm **Fabric connected** before exploring.
 2. **Discovery runs automatically** — team profiles columns, samples, relationships
 3. **CEO Briefing** (main panel) — review 4-role briefs; approve/reject/comment
 4. **Knowledge panel** — add glossary (e.g. field definitions), targets, join mappings
-5. **Explore mode** → ask questions → collaborative pipeline (DE → Analyst → Scientist → BA)
-6. Save **Insight Candidate** → export handoff → BA/DA feedback → **Promote to Trusted**
-7. **Trusted mode** → query using approved definitions
+5. **(Optional) SAP Table Descriptions** — import DD02T CSV once (see below)
+6. **Explore mode** → ask questions → collaborative pipeline (DE → Analyst → Scientist → BA)
+7. Save **Insight Candidate** → export handoff → BA/DA feedback → **Promote to Trusted**
+8. **Trusted mode** → query using approved definitions
 
 Phase 1 backlog/promotion flow still applies; Phase 2 adds discovery, knowledge, and CEO loop.
+
+### SAP Table Descriptions (DD02T export)
+
+Import your SAP table metadata CSV once so agents know what each table means (e.g. `VBRK` = Billing Document Header).
+
+**CSV format:** `TABNAME,DDLANGUAGE,DDTEXT` (English rows use `DDLANGUAGE=E`)
+
+**Option A — script (recommended for large files ~800k rows):**
+
+```powershell
+.\scripts\import-sap-table-descriptions.ps1 -CsvPath "$env:USERPROFILE\Downloads\SAP_Table_Description.csv"
+```
+
+**Option B — UI:** Sidebar → Knowledge → **SAP Tables** → set path → **นำเข้า**
+
+**Option C — API:**
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/knowledge/sap-tables/import `
+  -H "Content-Type: application/json" `
+  -d '{\"csv_path\": \"C:\\Users\\you\\Downloads\\SAP_Table_Description.csv\", \"language\": \"E\"}'
+```
+
+Data is stored in `data/local/knowledge/sap_tables.db` (SQLite, gitignored). After import, when you select a theme and run discovery, the **Schema Context Pack** includes matched SAP descriptions for theme tables (e.g. `VBRK_All_Cleaned` → `VBRK`).
 
 ---
 
@@ -178,6 +203,9 @@ User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
 | `GET` | `/api/v1/validation/phase2` | Phase 2 DoD checklist |
 | `POST` | `/api/v1/discovery/{theme_id}/run` | Theme discovery pipeline |
 | `GET/POST` | `/api/v1/knowledge/glossary` | Field glossary CRUD |
+| `POST` | `/api/v1/knowledge/sap-tables/import` | Import SAP DD02T CSV |
+| `GET` | `/api/v1/knowledge/sap-tables/stats` | SAP import status |
+| `GET` | `/api/v1/knowledge/sap-tables/lookup/{table}` | Lookup description |
 | `GET/POST` | `/api/v1/briefings/{theme_id}` | Multi-role CEO briefs |
 | `POST` | `/api/v1/feedback/{theme_id}` | CEO feedback on briefs |
 | `POST` | `/api/v1/approval/` | Approve semantic layer updates |
