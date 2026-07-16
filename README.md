@@ -1,97 +1,239 @@
-# AI Analytics Multi-Agent System
+# AI Fabric Insight Explorer
 
-Enterprise AI Data Team powered by **LangGraph**, **FastAPI**, **Streamlit**, and **Ollama** (qwen2.5-coder:7b).
+Local **AI Data Team** (LangGraph multi-agent) for **Microsoft Fabric Data Warehouse** — Explore draft insights, backlog handoff to BA/DA, and promote **Trusted** definitions after human approval.
+
+**Phase 1 runtime:** Native Windows · FastAPI + Streamlit + Ollama · Fabric read-only (Service Principal) · local JSON + SQLite (no PostgreSQL in the main path)
+
+---
+
+## Prerequisites
+
+| Requirement | Notes |
+|-------------|--------|
+| **Python 3.11+** | venv created automatically by run scripts |
+| **Microsoft ODBC Driver 18 for SQL Server** | `winget install Microsoft.msodbcsql.18` |
+| **Ollama** | Local or LAN server; recommended model: `qwen2.5-coder:14b` |
+| **Fabric Service Principal** | Entra ID app + secret **Value**; SP added to target Fabric workspace |
+| **Git** | Clone this repo |
+
+---
+
+## First-time setup
+
+1. **Clone and enter the project**
+   ```powershell
+   git clone https://github.com/weerawatman/ai-analytic-multiagent.git
+   cd ai-analytic-multiagent
+   ```
+
+2. **Create `.env` from template**
+   ```powershell
+   copy .env.example .env
+   ```
+   Edit `.env` and fill in at minimum:
+
+   | Variable | Where to get it |
+   |----------|-----------------|
+   | `FABRIC_SERVER` | Fabric Portal → open your Warehouse → **Copy SQL connection string** → `Server=` |
+   | `FABRIC_DATABASE` | Same string → `Initial Catalog=` (e.g. `WH_Silver`) |
+   | `FABRIC_TENANT_ID` | Entra ID → Overview |
+   | `FABRIC_CLIENT_ID` | App registration → Application (client) ID |
+   | `FABRIC_CLIENT_SECRET` | App registration → Certificates & secrets → **Value** (not Secret ID) |
+   | `OLLAMA_BASE_URL` | e.g. `http://127.0.0.1:11434` or your LAN Ollama host |
+   | `OLLAMA_MODEL` | e.g. `qwen2.5-coder:14b` |
+   | `BACKEND_URL` | Keep `http://127.0.0.1:8000` for native run |
+
+   **Important:** `FABRIC_SERVER` + `FABRIC_DATABASE` must come from the **same** Warehouse connection string. The display name in Fabric UI (e.g. WH_Silver) may differ from warehouses on other workspaces.
+
+3. **Grant SP access in Fabric**
+   - Workspace → **Manage access** → add your Service Principal (e.g. Viewer or higher)
+   - Ensure the SP can read the target Warehouse
+
+4. **Pull Ollama models** (on the machine running Ollama)
+   ```powershell
+   .\scripts\setup-ollama-models.ps1 -BaseUrl http://127.0.0.1:11434 -Profile default
+   ```
+   Use `-BaseUrl` if Ollama runs on another host (e.g. `http://172.16.6.160:11434`).
+
+5. **Install dependencies** (optional — run scripts also do this)
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install -r backend\requirements.txt
+   pip install -r frontend\requirements.txt
+   ```
+
+---
+
+## Run (every time you start work)
+
+Open **two terminals** from the project root:
+
+**Terminal 1 — Backend**
+```powershell
+.\scripts\run-backend.ps1
+```
+
+**Terminal 2 — Frontend**
+```powershell
+.\scripts\run-frontend.ps1
+```
+
+| Service | URL |
+|---------|-----|
+| **Streamlit UI** | http://127.0.0.1:8501 |
+| **FastAPI docs** | http://127.0.0.1:8000/docs |
+| **Fabric health** | http://127.0.0.1:8000/api/v1/fabric/health |
+
+In the UI sidebar, confirm **Fabric connected** before exploring.
+
+---
+
+## Typical workflow (Phase 2)
+
+1. **Scan schema** → pick a theme (sidebar)
+2. **Discovery runs automatically** — team profiles columns, samples, relationships
+3. **CEO Briefing** (main panel) — review 4-role briefs; approve/reject/comment
+4. **Knowledge panel** — add glossary (e.g. field definitions), targets, join mappings
+5. **Explore mode** → ask questions → collaborative pipeline (DE → Analyst → Scientist → BA)
+6. Save **Insight Candidate** → export handoff → BA/DA feedback → **Promote to Trusted**
+7. **Trusted mode** → query using approved definitions
+
+Phase 1 backlog/promotion flow still applies; Phase 2 adds discovery, knowledge, and CEO loop.
+
+---
+
+## Typical workflow (Phase 1 — reference)
+
+1. **Scan schema** → pick a theme (sidebar)
+2. **Explore mode** → ask questions → save **Insight Candidate**
+3. **Export** Thai Markdown handoff report
+4. Record **BA/DA feedback** → status `validated`
+5. **Promote to Trusted** → HITL approve
+6. **Trusted mode** → query using approved definitions
+
+---
+
+## Validation & tests
+
+```powershell
+# Unit/integration tests
+$env:PYTHONPATH = "."
+python -m pytest backend/tests/ -q
+
+# Phase 1 Definition of Done checks
+.\scripts\validate-phase1.ps1
+
+# Phase 2 Definition of Done checks
+.\scripts\validate-phase2.ps1
+```
+
+Owner sign-off: `knowledge/07-testing/sign-off.md` (Phase 1) · `knowledge/07-testing/phase-2-sign-off.md` (Phase 2)
+
+---
 
 ## Architecture
 
 ```
-User ──► Streamlit UI ──► FastAPI Backend ──► LangGraph Orchestrator
-                                                  │
-                              ┌────────────────────┼────────────────────┐
-                              ▼                    ▼                    ▼
-                        Data Engineer        Data Analyst        Data Scientist
-                        (Schema &            (Text-to-SQL &      (ML Models &
-                         Semantic Layer)       Pattern Analysis)   Forecasting)
-                              │
-                        [Human-in-the-Loop]
-                        Approval Gate
+User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
+                                           │
+         Explore (collaborative)             │ Trusted (router)
+                     ┌─────────────────────┼─────────────────────┐
+                     ▼                     ▼                     ▼
+               Data Engineer          Data Analyst         Data Scientist
+                     │                     │                     │
+                     └──────────► Business Analyst ◄──────────┘
+                                           │
+                                    CEO Briefing + Feedback
+                                           │
+              Discovery + Knowledge ───────┤
+                     │                     │
+              [HITL Approval]         Fabric DW (read-only)
+                     │
+              Trusted JSON + Backlog + Knowledge (data/local/)
 ```
-
-### Agents
 
 | Agent | Role |
 |-------|------|
-| **Data Engineer** | Extracts database schema, builds/updates semantic layer. Requests human approval for changes. |
-| **Data Analyst** | Converts natural language to SQL, analyzes query results, identifies patterns. |
-| **Data Scientist** | Proposes statistical models, ML approaches, and advanced analytics strategies. |
+| **Data Engineer** | Schema, discovery, semantic layer; HITL for layer updates |
+| **Data Analyst** | T-SQL with schema context pack, SQL retry, Quality Bar D |
+| **Data Scientist** | Critique, sanity checks, statistical framing |
+| **Business Analyst** | Metric definitions, CEO narrative, KPI alignment (hybrid HITL) |
 
-### Human-in-the-Loop
+**Modes:** `Explore` (draft) · `Trusted` (approved definitions only)
 
-The Data Engineer agent can propose updates to the **semantic layer** (`data/semantic_layer.json`). When this happens, the LangGraph workflow **interrupts** and waits for user approval via the `/api/v1/approval/` endpoint before proceeding.
+---
 
-## Prerequisites
-
-- **Docker & Docker Compose**
-- **Ollama** running locally with `qwen2.5-coder:7b` model pulled:
-  ```bash
-  ollama pull qwen2.5-coder:7b
-  ```
-
-## Quick Start
-
-1. Copy environment file:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Start all services:
-   ```bash
-   docker compose up --build
-   ```
-
-3. Access the applications:
-
-   | Service | URL |
-   |---------|-----|
-   | Streamlit UI | http://localhost:8501 |
-   | FastAPI Docs | http://localhost:8000/docs |
-   | Adminer (DB) | http://localhost:8080 |
-
-## API Endpoints
+## Key API endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/chat/` | Send a message to the AI Data Team |
-| `POST` | `/api/v1/approval/` | Approve/reject semantic layer updates |
-| `GET` | `/health` | Health check |
+| `POST` | `/api/v1/chat/` | Chat with AI Data Team |
+| `GET` | `/api/v1/fabric/health` | Fabric connection check |
+| `POST` | `/api/v1/themes/scan` | Schema scan → theme proposals |
+| `GET/POST` | `/api/v1/backlog/` | Insight backlog (JSON) |
+| `POST` | `/api/v1/backlog/{id}/export` | Thai Markdown handoff |
+| `GET/POST` | `/api/v1/semantic/promote/{id}/…` | Trusted promotion HITL |
+| `GET` | `/api/v1/validation/phase1` | Phase 1 DoD checklist |
+| `GET` | `/api/v1/validation/phase2` | Phase 2 DoD checklist |
+| `POST` | `/api/v1/discovery/{theme_id}/run` | Theme discovery pipeline |
+| `GET/POST` | `/api/v1/knowledge/glossary` | Field glossary CRUD |
+| `GET/POST` | `/api/v1/briefings/{theme_id}` | Multi-role CEO briefs |
+| `POST` | `/api/v1/feedback/{theme_id}` | CEO feedback on briefs |
+| `POST` | `/api/v1/approval/` | Approve semantic layer updates |
 
-## Project Structure
+---
+
+## Project structure
 
 ```
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI entry point
-│   │   ├── api/routes/           # chat.py, approval.py
-│   │   ├── core/                 # config.py, logger.py
-│   │   ├── agents/               # LangGraph orchestrator + agents
-│   │   ├── db/                   # Async SQLAlchemy + models
-│   │   ├── schemas/              # Pydantic request/response models
-│   │   └── services/             # semantic_store.py
-│   ├── alembic/                  # Database migrations
-│   └── tests/                    # Pytest
+├── backend/app/
+│   ├── agents/           # LangGraph orchestrator + DE/Analyst/Scientist
+│   ├── api/routes/       # chat, fabric, themes, backlog, semantic, validation
+│   ├── services/         # fabric_connector, sql_guard, stores, promotion
+│   └── schemas/
 ├── frontend/
-│   ├── app.py                    # Streamlit main UI
-│   └── components/               # UI components
+│   ├── app.py            # Streamlit main
+│   └── components/       # theme, backlog, promotion, validation panels
 ├── data/
-│   ├── init.sql                  # Dummy data (auto-loaded)
-│   └── semantic_layer.json       # Semantic layer
-└── docker-compose.yml
+│   ├── templates/        # backlog + semantic JSON templates (committed)
+│   └── local/            # runtime data — gitignored
+├── scripts/
+│   ├── run-backend.ps1
+│   ├── run-frontend.ps1
+│   ├── setup-ollama-models.ps1
+│   └── validate-phase1.ps1
+├── knowledge/            # discovery → build sprints, sign-off
+└── .env.example
 ```
 
-## Tech Stack
+---
 
-- **Backend**: FastAPI, LangGraph, LangChain, SQLAlchemy (async), Alembic, Pydantic V2
-- **Frontend**: Streamlit
-- **LLM**: Ollama (qwen2.5-coder:7b)
-- **Database**: PostgreSQL 16
-- **Containerization**: Docker & Docker Compose
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| Fabric not configured | Fill `FABRIC_*` in `.env`; restart backend |
+| `Invalid client secret` | Use secret **Value**, not Secret ID |
+| Wrong tables / workspace | Copy connection string from the **correct** Warehouse; grant SP in that workspace |
+| `ODBC Driver 18` not found | `winget install Microsoft.msodbcsql.18` |
+| Ollama OOM | Use `qwen2.5-coder:7b` in `.env` temporarily |
+| UI cannot reach API | `BACKEND_URL=http://127.0.0.1:8000` (not `http://backend:8000`) |
+
+---
+
+## Documentation
+
+| Topic | Path |
+|-------|------|
+| PRD & acceptance criteria | `knowledge/03-prd/` |
+| Architecture & ADRs | `knowledge/05-architecture/` |
+| Build sprints | `knowledge/06-sprints/` |
+| Phase 1 sign-off | `knowledge/07-testing/sign-off.md` |
+| Phase 2 sign-off | `knowledge/07-testing/phase-2-sign-off.md` |
+
+---
+
+## Legacy (not Phase 1 runtime)
+
+Docker Compose and PostgreSQL remain in the repo for reference but are **not** the primary way to run Phase 1. Use native scripts above.

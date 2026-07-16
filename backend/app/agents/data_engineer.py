@@ -1,6 +1,7 @@
 from langchain_core.messages import AIMessage
 from langchain_ollama import ChatOllama
 
+from backend.app.agents.skill_loader import load_agent_skill
 from backend.app.agents.state import AgentState
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
@@ -16,12 +17,20 @@ llm = ChatOllama(
     timeout=settings.ollama_timeout,
 )
 
-SYSTEM_PROMPT = """You are an expert Data Engineer with access to Microsoft Fabric Data Warehouse (T-SQL).
+SYSTEM_PROMPT = """{skill}
+
+You are an expert Data Engineer with access to Microsoft Fabric Data Warehouse (T-SQL).
 
 Theme: {theme}
 
 Schema preview:
 {db_schema}
+
+Discovery context:
+{discovery_context}
+
+Knowledge:
+{knowledge_context}
 
 Current semantic layer:
 {semantic_layer}
@@ -42,13 +51,19 @@ async def data_engineer_node(state: AgentState) -> dict:
 
     semantic_layer = await read_semantic_layer()
     db_schema = get_fabric_schema_text() if fabric_is_available() else "(Fabric not configured)"
+    skill = load_agent_skill("data_engineer")
+    discovery_ctx = state.discovery_context or "(none)"
+    knowledge_ctx = state.knowledge_context or "(none)"
 
     messages = [
         {
             "role": "system",
             "content": SYSTEM_PROMPT.format(
+                skill=skill,
                 theme=state.theme or "ไม่ระบุ",
                 db_schema=db_schema,
+                discovery_context=discovery_ctx,
+                knowledge_context=knowledge_ctx,
                 semantic_layer=semantic_layer,
             ),
         },

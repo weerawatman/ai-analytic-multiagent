@@ -39,7 +39,10 @@ def _extract_sql_from_text(text: str) -> str:
 def build_quality_payload(state: AgentState) -> dict[str, Any]:
     """Build structured insight candidate from agent state."""
     combined = "\n".join(
-        filter(None, [state.query_result, state.analysis_summary, state.schema_info])
+        filter(
+            None,
+            [state.query_result, state.analysis_summary, state.schema_info, state.ba_summary],
+        )
     )
 
     sql_primary = state.generated_sql or _extract_sql_from_text(combined)
@@ -95,13 +98,19 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
             last_question = m.content
             break
 
-    answer_summary = _extract_section(combined, "ANALYSIS") or state.final_answer or combined[:500]
+    answer_summary = (
+        _extract_section(combined, "ANALYSIS")
+        or _extract_section(state.ba_summary, "BUSINESS_SUMMARY")
+        or state.final_answer
+        or combined[:500]
+    )
 
-    return {
+    payload = {
         "theme": state.theme or "",
         "mode": state.mode or "explore",
         "question_th": last_question,
         "answer_summary_th": answer_summary[:2000],
+        "ba_summary_th": (state.ba_summary or "")[:2000],
         "sql_primary": sql_primary,
         "sql_alternative": sql_alternative,
         "assumptions": assumptions,
@@ -112,6 +121,7 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         "sample_preview": sample_preview,
         "status": "new",
     }
+    return payload
 
 
 def format_explore_response_th(payload: dict[str, Any]) -> str:
@@ -140,6 +150,8 @@ def format_explore_response_th(payload: dict[str, Any]) -> str:
         "### คำถามที่ควรถาม BA/DA",
         *[f"- {q}" for q in payload.get("questions_for_ba_da", [])],
     ]
+    if payload.get("ba_summary_th"):
+        lines += ["", "### มุมธุรกิจ (BA)", payload["ba_summary_th"]]
     if payload.get("sample_preview"):
         lines += ["", "### ตัวอย่างข้อมูล", f"```json\n{payload['sample_preview']}\n```"]
     return "\n".join(lines)

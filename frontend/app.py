@@ -7,7 +7,9 @@ import streamlit as st
 from components.api_client import post_json
 from components.approval_panel import render_approval_panel
 from components.backlog_panel import render_backlog_panel
+from components.ceo_briefing_panel import render_ceo_briefing_panel
 from components.chat_box import render_assistant_message
+from components.knowledge_panel import render_knowledge_panel
 from components.promotion_panel import render_promotion_panel
 from components.status_bar import render_fabric_status, render_mode_selector
 from components.validation_panel import render_validation_panel
@@ -74,11 +76,17 @@ with st.sidebar:
                 st.error(f"บันทึกไม่สำเร็จ: {exc}")
 
     st.divider()
+    render_knowledge_panel()
+
+    st.divider()
     st.markdown("**Agents**")
-    st.caption("🔧 DE · 📈 Analyst · 🧪 Scientist")
+    st.caption("🔧 DE · 📈 Analyst · 🧪 Scientist · 💼 BA")
 
 # ──── Main: current mode indicator ────
 col_main, col_mode = st.columns([4, 1])
+with col_main:
+    if st.session_state.get("selected_theme_id"):
+        render_ceo_briefing_panel()
 with col_mode:
     if st.session_state.mode == "explore":
         st.markdown("### 🟡 Explore")
@@ -104,6 +112,7 @@ if st.session_state.get("promotion_preview"):
 if prompt := st.chat_input("ถามทีมข้อมูลของคุณ..."):
     mode = st.session_state.get("mode", "explore")
     theme = st.session_state.get("theme_input") or None
+    theme_id = st.session_state.get("selected_theme_id") or None
 
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -120,6 +129,7 @@ if prompt := st.chat_input("ถามทีมข้อมูลของคุ�
                         "message": prompt,
                         "mode": mode,
                         "theme": theme,
+                        "theme_id": theme_id,
                     },
                 )
                 status.update(label="เสร็จแล้ว", state="complete")

@@ -1,6 +1,7 @@
 from langchain_core.messages import AIMessage
 from langchain_ollama import ChatOllama
 
+from backend.app.agents.skill_loader import load_agent_skill
 from backend.app.agents.state import AgentState
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
@@ -14,8 +15,19 @@ llm = ChatOllama(
     timeout=settings.ollama_timeout,
 )
 
-CRITIQUE_PROMPT = """You are a Data Scientist reviewing a draft analytics insight (Explore mode).
+CRITIQUE_PROMPT = """{skill}
+
+You are a Data Scientist reviewing a draft analytics insight (Explore mode).
 Challenge assumptions and suggest improvements. Respond in Thai for narrative; SQL in English.
+
+Discovery context:
+{discovery_context}
+
+Knowledge:
+{knowledge_context}
+
+CEO feedback:
+{ceo_feedback_context}
 
 Analyst output:
 {query_result}
@@ -32,10 +44,13 @@ CONFIDENCE: high|medium|low
 CRITIQUE: <Thai critique and suggested analytical angles — no ML training, strategy only>
 """
 
-SYSTEM_PROMPT = """You are a Data Scientist agent for exploratory analytics (not ML deployment).
+SYSTEM_PROMPT = """{skill}
+
+You are a Data Scientist agent for exploratory analytics (not ML deployment).
 
 Context:
 - Schema: {schema_info}
+- Discovery: {discovery_context}
 - Analyst output: {query_result}
 
 Respond in Thai. Suggest analytical angles, challenge assumptions, propose checks.
@@ -46,11 +61,18 @@ Include ALT_SQL, ASSUMPTIONS, UNKNOWNS, QUESTIONS_FOR_BA_DA, CONFIDENCE, CRITIQU
 async def explore_critique_node(state: AgentState) -> dict:
     """Challenge analyst assumptions in Explore pipeline."""
     logger.info("Explore critique node thread=%s", state.thread_id)
+    skill = load_agent_skill("data_scientist")
 
     messages = [
         {
             "role": "system",
-            "content": CRITIQUE_PROMPT.format(query_result=state.query_result),
+            "content": CRITIQUE_PROMPT.format(
+                skill=skill,
+                discovery_context=state.discovery_context or "(none)",
+                knowledge_context=state.knowledge_context or "(none)",
+                ceo_feedback_context=state.ceo_feedback_context or "(none)",
+                query_result=state.query_result,
+            ),
         }
     ]
 
@@ -70,12 +92,15 @@ async def explore_critique_node(state: AgentState) -> dict:
 
 async def data_scientist_node(state: AgentState) -> dict:
     logger.info("Data Scientist agent invoked thread=%s", state.thread_id)
+    skill = load_agent_skill("data_scientist")
 
     messages = [
         {
             "role": "system",
             "content": SYSTEM_PROMPT.format(
+                skill=skill,
                 schema_info=state.schema_info,
+                discovery_context=state.discovery_context or "(none)",
                 query_result=state.query_result,
             ),
         },

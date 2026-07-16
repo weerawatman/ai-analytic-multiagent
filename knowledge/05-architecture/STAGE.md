@@ -19,6 +19,10 @@
 | ADR-002 JSON + SQLite | `adr/002-local-storage-json-sqlite.md` | ✅ Accepted |
 | ADR-003 Native runtime | `adr/003-native-runtime-no-docker.md` | ✅ Accepted |
 | ADR-004 Explore/Trusted | `adr/004-explore-trusted-modes.md` | ✅ Accepted |
+| Phase 2 delivery plan | `phases/phase-2.md` | ✅ |
+| ADR-005 Discovery pipeline | `adr/005-theme-discovery-pipeline.md` | ✅ Accepted |
+| ADR-006 Knowledge layer | `adr/006-knowledge-layer.md` | ✅ Accepted |
+| ADR-007 BA agent + CEO loop | `adr/007-ba-agent-ceo-loop.md` | ✅ Accepted |
 | API contracts | `api-contracts/overview.md` | ✅ |
 
 ## Human Gate

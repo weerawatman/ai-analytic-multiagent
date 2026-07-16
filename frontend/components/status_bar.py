@@ -1,6 +1,7 @@
+import httpx
 import streamlit as st
 
-from components.api_client import get_json
+from components.api_client import get_json, get_json_allow_error
 from components.theme_panel import render_theme_panel
 
 
@@ -17,15 +18,21 @@ def render_fabric_status() -> None:
     """Show Fabric connection status in sidebar."""
     st.subheader("Fabric DW")
     try:
-        data = get_json("/api/v1/fabric/health")
+        data = get_json_allow_error("/api/v1/fabric/health")
         if data.get("connected"):
             st.success(f"เชื่อมต่อแล้ว · {data.get('database', '')}")
         elif data.get("configured"):
-            st.error(data.get("detail_th") or data.get("detail", "เชื่อมต่อไม่สำเร็จ"))
+            detail = data.get("detail_th") or data.get("detail", "เชื่อมต่อไม่สำเร็จ")
+            if "capacity" in str(data.get("detail", "")).lower():
+                st.warning(f"Fabric capacity เต็มชั่วคราว — ลองใหม่ภายหลัง\n\n{detail}")
+            else:
+                st.error(detail)
         else:
             st.warning("ยังไม่ได้ตั้งค่า Fabric ใน .env")
+    except httpx.ConnectError:
+        st.error("Backend ไม่พร้อม — รัน .\\scripts\\run-backend.ps1 ก่อน")
     except Exception as exc:
-        st.error(f"Backend ไม่พร้อม: {exc}")
+        st.error(f"ตรวจสอบ Fabric ไม่ได้: {exc}")
 
 
 def render_mode_selector() -> None:

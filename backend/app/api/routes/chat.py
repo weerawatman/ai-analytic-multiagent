@@ -36,6 +36,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         thread_id=request.thread_id,
         mode=request.mode,
         theme=request.theme or "",
+        theme_id=request.theme_id or "",
     )
 
     try:

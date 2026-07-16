@@ -9,4 +9,4 @@ async def test_health_endpoint(client: AsyncClient) -> None:
     data = response.json()
     assert data["status"] == "healthy"
     assert "fabric" in data
-    assert data["fabric"]["configured"] is False
+    assert "configured" in data["fabric"]

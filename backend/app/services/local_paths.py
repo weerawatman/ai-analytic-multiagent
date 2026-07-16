@@ -25,15 +25,21 @@ def get_templates_dir(settings: Settings | None = None) -> Path:
 
 
 def ensure_local_structure(settings: Settings | None = None) -> None:
-    """Create Phase 1 local storage folders."""
+    """Create Phase 1+2 local storage folders."""
     local = get_local_dir(settings)
-    for name in ("backlog", "semantic", "exports", "samples"):
+    for name in ("backlog", "semantic", "exports", "samples", "knowledge", "feedback", "briefings", "themes"):
         (local / name).mkdir(parents=True, exist_ok=True)
 
-    semantic_trusted = local / "semantic" / "trusted.json"
-    if not semantic_trusted.exists():
-        semantic_trusted.write_text('{"version": "1.0", "metrics": []}', encoding="utf-8")
+    (local / "knowledge" / "themes").mkdir(parents=True, exist_ok=True)
 
-    semantic_draft = local / "semantic" / "draft.json"
-    if not semantic_draft.exists():
-        semantic_draft.write_text('{"version": "1.0", "metrics": []}', encoding="utf-8")
+    for rel, default in (
+        ("semantic/trusted.json", '{"version": "1.0", "metrics": []}'),
+        ("semantic/draft.json", '{"version": "1.0", "metrics": []}'),
+        ("knowledge/glossary.json", '{"version": "1.0", "items": []}'),
+        ("knowledge/targets.json", '{"version": "1.0", "items": []}'),
+        ("knowledge/relationships.json", '{"version": "1.0", "items": []}'),
+    ):
+        path = local / rel
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(default, encoding="utf-8")

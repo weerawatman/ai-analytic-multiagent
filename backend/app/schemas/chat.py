@@ -8,6 +8,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="User message")
     mode: Literal["explore", "trusted"] = "explore"
     theme: str | None = None
+    theme_id: str | None = None
 
 
 class ChatResponse(BaseModel):

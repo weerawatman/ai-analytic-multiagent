@@ -24,6 +24,17 @@ class AgentState(BaseModel):
     # Data Scientist outputs
     analysis_summary: str = ""
 
+    # Business Analyst outputs (Phase 2)
+    ba_summary: str = ""
+
+    # Phase 2 context
+    theme_id: str = ""
+    discovery_context: str = ""
+    knowledge_context: str = ""
+    ceo_feedback_context: str = ""
+    role_briefs: list[dict] = Field(default_factory=list)
+    use_collaborative_flow: bool = True
+
     # Routing
     next_agent: str = ""
     final_answer: str = ""

@@ -1,4 +1,5 @@
 import streamlit as st
+from urllib.parse import quote
 
 from components.api_client import get_json, post_json
 
@@ -48,7 +49,28 @@ def render_theme_panel() -> None:
                 st.session_state.selected_theme_id = theme["id"]
                 st.session_state.theme_input = theme["name_th"]
                 st.session_state.selected_theme = theme
+                _run_discovery_and_briefings(theme)
                 st.rerun()
 
     if st.session_state.get("selected_theme"):
         st.info(f"Theme ที่เลือก: **{st.session_state.theme_input}**")
+        disc = st.session_state.get("discovery_status")
+        if disc:
+            st.caption(disc)
+
+
+def _run_discovery_and_briefings(theme: dict) -> None:
+    theme_id = theme["id"]
+    theme_name = theme.get("name_th", "")
+    with st.spinner("ทีมกำลังเรียนรู้ข้อมูล... (Discovery Pipeline)"):
+        try:
+            result = post_json(f"/api/v1/discovery/{theme_id}/run", {})
+            tables = result.get("tables_profiled", 0)
+            st.session_state.discovery_status = f"Discovery: {tables} ตาราง profile แล้ว"
+            try:
+                name_q = quote(theme_name)
+                post_json(f"/api/v1/briefings/{theme_id}/generate?theme_name={name_q}", {})
+            except Exception:
+                pass
+        except Exception as exc:
+            st.session_state.discovery_status = f"Discovery ล้มเหลว: {exc}"

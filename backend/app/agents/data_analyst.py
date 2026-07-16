@@ -1,10 +1,12 @@
 from langchain_core.messages import AIMessage
 from langchain_ollama import ChatOllama
 
+from backend.app.agents.skill_loader import load_agent_skill
 from backend.app.agents.state import AgentState
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
-from backend.app.services.fabric_sql import fabric_is_available, get_fabric_schema_text, run_fabric_sql
+from backend.app.services.discovery_service import format_schema_context_pack
+from backend.app.services.fabric_sql import fabric_is_available, run_fabric_sql
 from backend.app.services.semantic_store import read_trusted_layer
 
 
@@ -27,6 +29,7 @@ TRUSTED MODE RULES (strict):
 
 EXPLORE_MODE_RULES = """
 EXPLORE MODE RULES:
+- Use ONLY column names from Schema Context Pack — NEVER guess column names
 - Propose draft SQL and mark ANALYSIS as Draft
 - List assumptions and questions for BA/DA validation
 """
@@ -35,18 +38,26 @@ settings = get_settings()
 
 llm = ChatOllama(
     base_url=settings.ollama_base_url,
-    model=settings.ollama_model,
+    model=settings.ollama_model_analyst or settings.ollama_model,
     temperature=0,
     timeout=settings.ollama_timeout,
 )
 
 SYSTEM_PROMPT = """You are a Data Analyst on an AI Data Team connected to Microsoft Fabric Data Warehouse (T-SQL).
 
+{skill}
+
 Theme: {theme}
 Mode: {mode}
 
-Schema preview (Fabric):
+Schema Context Pack (columns are authoritative):
 {db_schema}
+
+Knowledge layer:
+{knowledge_context}
+
+CEO feedback:
+{ceo_feedback_context}
 
 Trusted definitions (if any):
 {trusted_layer}
@@ -69,7 +80,7 @@ Rules:
 
 {mode_rules}
 
-User question context from Data Engineer (if any):
+Data Engineer context:
 {schema_info}
 """
 
@@ -89,14 +100,43 @@ def _extract_sql(text: str) -> str:
     return ""
 
 
+async def _retry_sql_with_error(content: str, sql: str, error: str, db_schema: str) -> tuple[str, str]:
+    """One retry round with column context when SQL fails."""
+    retry_prompt = f"""The SQL failed with error: {error}
+
+Original SQL:
+{sql}
+
+Available schema (use ONLY these columns):
+{db_schema[:3000]}
+
+Fix the SQL. Return corrected SQL only in a ```sql block."""
+    try:
+        response = await llm.ainvoke(retry_prompt)
+        fixed = _extract_sql(str(response.content))
+        if fixed:
+            result = run_fabric_sql(fixed, mode="explore", max_rows=10)
+            return content + f"\n\nSQL_RETRY:\n{fixed}\n\nQUERY_RESULT:\n{result.get('rows', [])}", fixed
+    except Exception as exc:
+        logger.warning("SQL retry failed: %s", exc)
+    return content, sql
+
+
 async def data_analyst_node(state: AgentState) -> dict:
     logger.info("Data Analyst agent invoked thread=%s mode=%s", state.thread_id, state.mode)
 
-    db_schema = get_fabric_schema_text() if fabric_is_available() else "(Fabric not configured)"
+    theme_id = state.theme_id or ""
+    db_schema = (
+        state.discovery_context
+        or format_schema_context_pack(theme_id or None)
+        if fabric_is_available()
+        else "(Fabric not configured)"
+    )
     trusted = await read_trusted_layer()
     relevant_metrics = _filter_trusted_metrics(trusted, state.theme or None)
     trusted_text = str(relevant_metrics)[:2000]
     mode_rules = TRUSTED_MODE_RULES if state.mode == "trusted" else EXPLORE_MODE_RULES
+    skill = load_agent_skill("data_analyst")
 
     if state.mode == "trusted" and not relevant_metrics:
         no_trusted_msg = (
@@ -114,9 +154,12 @@ async def data_analyst_node(state: AgentState) -> dict:
         {
             "role": "system",
             "content": SYSTEM_PROMPT.format(
+                skill=skill,
                 theme=state.theme or "ไม่ระบุ",
                 mode=state.mode,
                 db_schema=db_schema,
+                knowledge_context=state.knowledge_context or "(none)",
+                ceo_feedback_context=state.ceo_feedback_context or "(none)",
                 trusted_layer=trusted_text,
                 schema_info=state.schema_info,
                 mode_rules=mode_rules,
@@ -142,6 +185,8 @@ async def data_analyst_node(state: AgentState) -> dict:
         except Exception as e:
             logger.error("Fabric SQL execution failed: %s", e)
             content += f"\n\nSQL_ERROR: {e}"
+            if "Invalid column name" in str(e) or "42S22" in str(e):
+                content, sql = await _retry_sql_with_error(content, sql, str(e), db_schema)
 
     return {
         "messages": [AIMessage(content=content, name="data_analyst")],

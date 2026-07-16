@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     # Ollama (native Windows defaults)
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5-coder:14b"
+    ollama_model_analyst: str = ""
+    ollama_model_ba: str = ""
 
     # FastAPI
     fastapi_host: str = "127.0.0.1"

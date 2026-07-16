@@ -3,6 +3,8 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
+from backend.app.agents.business_analyst import business_analyst_node
+from backend.app.agents.context_nodes import de_context_node, prepare_context_node
 from backend.app.agents.data_analyst import data_analyst_node
 from backend.app.agents.data_engineer import data_engineer_node
 from backend.app.agents.data_scientist import data_scientist_node, explore_critique_node
@@ -56,6 +58,12 @@ async def route_node(state: AgentState) -> dict:
     return {"next_agent": next_agent}
 
 
+def entry_decision(state: AgentState) -> str:
+    if state.mode == "explore" and state.use_collaborative_flow:
+        return "collaborative"
+    return "router"
+
+
 def route_decision(state: AgentState) -> str:
     return state.next_agent
 
@@ -68,11 +76,17 @@ def approval_check(state: AgentState) -> str:
 
 
 def after_analyst(state: AgentState) -> str:
-    return "explore_critique" if state.mode == "explore" else "summarize"
+    if state.mode == "explore" and state.use_collaborative_flow:
+        return "explore_critique"
+    return "summarize" if state.mode == "trusted" else "explore_critique"
 
 
 def after_scientist(state: AgentState) -> str:
     return "quality_assembly" if state.mode == "explore" else "summarize"
+
+
+def after_critique_collab(state: AgentState) -> str:
+    return "business_analyst" if state.use_collaborative_flow else "quality_assembly"
 
 
 async def approval_gate_node(state: AgentState) -> dict:
@@ -111,6 +125,8 @@ async def summarize_node(state: AgentState) -> dict:
         parts.append(f"[Data Analyst]\n{state.query_result}")
     if state.analysis_summary:
         parts.append(f"[Data Scientist]\n{state.analysis_summary}")
+    if state.ba_summary:
+        parts.append(f"[Business Analyst]\n{state.ba_summary}")
 
     summary = "\n\n---\n\n".join(parts) if parts else "No output produced."
     return {"final_answer": summary}
@@ -119,17 +135,42 @@ async def summarize_node(state: AgentState) -> dict:
 def build_graph() -> StateGraph:
     builder = StateGraph(AgentState)
 
+    builder.add_node("prepare_context", prepare_context_node)
     builder.add_node("router", route_node)
+    builder.add_node("de_context", de_context_node)
     builder.add_node("data_engineer", data_engineer_node)
     builder.add_node("data_analyst", data_analyst_node)
     builder.add_node("data_scientist", data_scientist_node)
     builder.add_node("explore_critique", explore_critique_node)
+    builder.add_node("business_analyst", business_analyst_node)
     builder.add_node("quality_assembly", quality_assembly_node)
     builder.add_node("approval_gate", approval_gate_node)
     builder.add_node("summarize", summarize_node)
 
-    builder.set_entry_point("router")
+    builder.set_entry_point("prepare_context")
 
+    builder.add_conditional_edges(
+        "prepare_context",
+        entry_decision,
+        {"collaborative": "de_context", "router": "router"},
+    )
+
+    # Collaborative Explore pipeline
+    builder.add_edge("de_context", "data_analyst")
+    builder.add_conditional_edges(
+        "data_analyst",
+        after_analyst,
+        {"explore_critique": "explore_critique", "summarize": "summarize"},
+    )
+    builder.add_conditional_edges(
+        "explore_critique",
+        after_critique_collab,
+        {"business_analyst": "business_analyst", "quality_assembly": "quality_assembly"},
+    )
+    builder.add_edge("business_analyst", "quality_assembly")
+    builder.add_edge("quality_assembly", "summarize")
+
+    # Router path (Trusted / explicit DE requests)
     builder.add_conditional_edges(
         "router",
         route_decision,
@@ -151,15 +192,6 @@ def build_graph() -> StateGraph:
         after_approval,
         {"continue": "summarize", "end": END},
     )
-
-    builder.add_conditional_edges(
-        "data_analyst",
-        after_analyst,
-        {"explore_critique": "explore_critique", "summarize": "summarize"},
-    )
-
-    builder.add_edge("explore_critique", "quality_assembly")
-    builder.add_edge("quality_assembly", "summarize")
 
     builder.add_conditional_edges(
         "data_scientist",
