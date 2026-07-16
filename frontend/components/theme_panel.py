@@ -1,7 +1,7 @@
 import streamlit as st
 from urllib.parse import quote
 
-from components.api_client import get_json, post_json
+from components.api_client import ONBOARDING_TIMEOUT, get_json, post_json
 
 
 def render_theme_panel() -> None:
@@ -64,18 +64,19 @@ def _run_discovery_and_onboarding(theme: dict) -> None:
     theme_name = theme.get("name_th", "")
     with st.spinner("ทีมกำลังเรียนรู้ข้อมูล... (Discovery + Onboarding — อาจใช้เวลา 20-40 นาที)"):
         try:
-            result = post_json(f"/api/v1/discovery/{theme_id}/run", {})
+            result = post_json(f"/api/v1/discovery/{theme_id}/run", {}, timeout=ONBOARDING_TIMEOUT)
             tables = result.get("tables_profiled", 0)
             st.session_state.discovery_status = f"Discovery: {tables} ตาราง profile แล้ว"
             try:
                 name_q = quote(theme_name)
-                post_json(f"/api/v1/briefings/{theme_id}/generate?theme_name={name_q}", {})
+                post_json(f"/api/v1/briefings/{theme_id}/generate?theme_name={name_q}", {}, timeout=ONBOARDING_TIMEOUT)
             except Exception:
                 pass
             try:
                 onboard = post_json(
                     f"/api/v1/onboarding/{theme_id}/run?theme_name={quote(theme_name)}",
                     {},
+                    timeout=ONBOARDING_TIMEOUT,
                 )
                 st.session_state.discovery_status += (
                     f" · Onboarding: {onboard.get('status', 'done')}"

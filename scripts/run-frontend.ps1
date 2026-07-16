@@ -14,5 +14,7 @@ if (-not (Test-Path ".venv")) {
 pip install -q -r frontend\requirements.txt
 
 $env:BACKEND_URL = if ($env:BACKEND_URL) { $env:BACKEND_URL } else { "http://127.0.0.1:8000" }
-Write-Host "Starting Streamlit on http://127.0.0.1:8501 (backend: $env:BACKEND_URL) ..."
+$env:CHAT_HTTP_TIMEOUT = if ($env:CHAT_HTTP_TIMEOUT) { $env:CHAT_HTTP_TIMEOUT } else { "3600" }
+$env:ONBOARDING_HTTP_TIMEOUT = if ($env:ONBOARDING_HTTP_TIMEOUT) { $env:ONBOARDING_HTTP_TIMEOUT } else { "3600" }
+Write-Host "Starting Streamlit on http://127.0.0.1:8501 (backend: $env:BACKEND_URL, chat timeout: ${env:CHAT_HTTP_TIMEOUT}s) ..."
 streamlit run frontend/app.py --server.port 8501 --server.address 127.0.0.1
