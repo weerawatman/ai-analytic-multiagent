@@ -9,7 +9,7 @@ from typing import Any
 
 from backend.app.services.local_paths import get_local_dir
 
-ROLE_ORDER = ("data_engineer", "data_analyst", "data_scientist", "business_analyst")
+ROLE_ORDER = ("data_engineer", "data_scientist", "data_analyst", "business_analyst")
 
 ROLE_LABELS_TH = {
     "data_engineer": "Data Engineer",

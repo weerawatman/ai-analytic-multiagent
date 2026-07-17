@@ -1,10 +1,13 @@
-"""LangGraph for Phase 2.5 team onboarding — DE → DA → DS → BA before CEO questions."""
+"""LangGraph for Phase 2.5 team onboarding — DE → DS → DA → BA before CEO questions."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
+from langchain_core.messages import BaseMessage
 from langgraph.graph import END, StateGraph
+from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
 
 from backend.app.agents.context_nodes import build_phase2_context
 from backend.app.agents.onboarding_nodes import (
@@ -16,19 +19,43 @@ from backend.app.agents.onboarding_nodes import (
 )
 
 
+class OnboardingState(BaseModel):
+    """Typed state so node updates merge — plain dict StateGraph replaces the whole state."""
+
+    messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
+    theme_id: str = ""
+    theme: str = ""
+    thread_id: str = ""
+    discovery_context: str = ""
+    knowledge_context: str = ""
+    sql_reference_context: str = ""
+    ceo_feedback_context: str = ""
+    schema_info: str = ""
+    query_result: str = ""
+    analysis_summary: str = ""
+    ba_summary: str = ""
+    role_artifacts: dict = Field(default_factory=dict)
+    status: str = "pending"
+    team_summary: str = ""
+    current_agent: str = ""
+    prior_handoffs: str = ""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
 def build_onboarding_graph() -> StateGraph:
-    builder = StateGraph(dict)
+    builder = StateGraph(OnboardingState)
 
     builder.add_node("de_onboard", onboarding_de_node)
-    builder.add_node("da_onboard", onboarding_da_node)
     builder.add_node("ds_onboard", onboarding_ds_node)
+    builder.add_node("da_onboard", onboarding_da_node)
     builder.add_node("ba_onboard", onboarding_ba_node)
     builder.add_node("finalize", onboarding_finalize_node)
 
     builder.set_entry_point("de_onboard")
-    builder.add_edge("de_onboard", "da_onboard")
-    builder.add_edge("da_onboard", "ds_onboard")
-    builder.add_edge("ds_onboard", "ba_onboard")
+    builder.add_edge("de_onboard", "ds_onboard")
+    builder.add_edge("ds_onboard", "da_onboard")
+    builder.add_edge("da_onboard", "ba_onboard")
     builder.add_edge("ba_onboard", "finalize")
     builder.add_edge("finalize", END)
 

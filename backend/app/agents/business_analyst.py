@@ -34,7 +34,7 @@ Team memory (onboarding baseline):
 Analyst output:
 {query_result}
 
-Scientist critique:
+Scientist plan / guidance:
 {analysis_summary}
 
 SQL pipeline status:

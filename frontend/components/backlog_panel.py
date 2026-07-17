@@ -32,7 +32,7 @@ def render_backlog_panel() -> None:
         icon = {"new": "🆕", "discussing": "💬", "validated": "✅", "rejected": "❌", "promoted": "⭐"}.get(
             item.get("status", "new"), "📌"
         )
-        title = item.get("question_th") or item.get("id", "")[:8]
+        title = item.get("question_th") or (item.get("id") or "")[:8]
         with st.expander(f"{icon} {title[:40]}"):
             st.markdown(f"**Theme:** {item.get('theme') or '-'}")
             st.markdown(f"**สถานะ:** {STATUS_LABELS.get(item.get('status', 'new'), item.get('status'))}")

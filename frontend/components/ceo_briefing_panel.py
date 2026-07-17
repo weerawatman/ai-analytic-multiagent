@@ -5,10 +5,14 @@ from components.api_client import get_json, post_json
 
 ROLE_ORDER = [
     ("data_engineer", "🔧 Data Engineer"),
-    ("data_analyst", "📈 Data Analyst"),
     ("data_scientist", "🧪 Data Scientist"),
+    ("data_analyst", "📈 Data Analyst"),
     ("business_analyst", "💼 Business Analyst"),
 ]
+
+
+def _clip(value, n: int = 19) -> str:
+    return (value or "")[:n]
 
 
 def render_ceo_briefing_panel() -> None:
@@ -26,7 +30,7 @@ def render_ceo_briefing_panel() -> None:
         _render_empty_roles()
         return
 
-    st.caption(f"สร้างเมื่อ: {data.get('generated_at', '')[:19]}")
+    st.caption(f"สร้างเมื่อ: {_clip(data.get('generated_at'))}")
 
     briefs_by_role: dict[str, list] = {r: [] for r, _ in ROLE_ORDER}
     for brief in data.get("briefs", []):

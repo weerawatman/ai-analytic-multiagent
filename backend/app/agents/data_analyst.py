@@ -153,6 +153,9 @@ CEO feedback:
 Team memory (onboarding baseline — align with this):
 {team_memory_context}
 
+Data Scientist guidance (hypotheses / approach — follow when writing SQL):
+{analysis_summary}
+
 Trusted definitions (if any):
 {trusted_layer}
 
@@ -436,6 +439,7 @@ async def data_analyst_node(state: AgentState) -> dict:
                 sql_reference_context=state.sql_reference_context or "(none)",
                 ceo_feedback_context=state.ceo_feedback_context or "(none)",
                 team_memory_context=state.team_memory_context or "(none)",
+                analysis_summary=state.analysis_summary or "(none)",
                 trusted_layer=trusted_text,
                 schema_info=state.schema_info,
                 mode_rules=mode_rules,

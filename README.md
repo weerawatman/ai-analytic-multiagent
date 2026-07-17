@@ -129,7 +129,7 @@ Does **not** work offline: Schema scan, fresh Discovery against Fabric, executin
 
 1. **Scan schema** → pick a theme (sidebar)
 2. **Discovery runs automatically** — team profiles columns, samples, relationships
-3. **Team Onboarding (Phase 2.5)** — DE → DA → DS → BA do homework; results in **Team Memory** panel (~20–40 min on first run)
+3. **Team Onboarding (Phase 2.5)** — DE → DS → DA → BA do homework; results in **Team Memory** panel (~20–40 min on first run)
 4. **CEO Briefing** (main panel) — review 4-role briefs; approve/reject/comment (feedback routes to glossary/targets/relationships)
 5. **Knowledge panel** — add glossary (e.g. field definitions), targets, join mappings
 6. **(Optional) SAP Table Descriptions** — import DD02T CSV once (see below)
@@ -165,7 +165,7 @@ Data is stored in `data/local/knowledge/sap_tables.db` (SQLite, gitignored). Aft
 
 ### Phase 2.5 — Team Onboarding
 
-After discovery, the system runs a **team onboarding graph** (DE → DA → DS → BA) before you ask questions. Output is stored in `data/local/team_memory/{theme_id}.json` and injected into all agent prompts.
+After discovery, the system runs a **team onboarding graph** (DE → DS → DA → BA) before you ask questions. Output is stored in `data/local/team_memory/{theme_id}.json` and injected into all agent prompts.
 
 **API:**
 

@@ -279,7 +279,7 @@ def format_explore_response_th(payload: dict[str, Any]) -> str:
     if payload.get("scientist_critique_th"):
         lines += [
             "",
-            "### มุม Data Scientist (DS — sanity & critique)",
+            "### มุม Data Scientist (DS — approach & hypotheses)",
             payload["scientist_critique_th"],
         ]
     if payload.get("ba_summary_th"):

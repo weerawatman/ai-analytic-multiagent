@@ -136,13 +136,19 @@ def _next_step(node: str, update: dict[str, Any], mode: str) -> str | None:
         return "de_context" if mode == "explore" else "router"
     if node == "router":
         return update.get("next_agent") or "data_analyst"
+    if node == "de_context":
+        return "explore_critique"
+    if node == "explore_critique":
+        # Pre-SQL plan (no query_result yet) → DA; post-SQL critique → BA.
+        if update.get("query_result"):
+            return "business_analyst"
+        # When DS only returns analysis_summary (plan), go to DA.
+        return "data_analyst"
     if node == "data_analyst":
         if update.get("sql_error") and not update.get("sql_failed"):
             return "data_analyst"
-        return "explore_critique" if mode == "explore" else "summarize"
+        return "business_analyst" if mode == "explore" else "summarize"
     return {
-        "de_context": "data_analyst",
-        "explore_critique": "business_analyst",
         "business_analyst": "quality_assembly",
         "quality_assembly": "summarize",
         "data_engineer": "summarize",

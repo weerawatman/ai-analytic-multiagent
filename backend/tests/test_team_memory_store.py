@@ -38,14 +38,25 @@ def test_prior_handoffs(temp_storage):
     )
     team_memory_store.update_role_artifact(
         "t1",
+        "data_scientist",
+        handoff_summary="DS handoff",
+        artifact={},
+    )
+    team_memory_store.update_role_artifact(
+        "t1",
         "data_analyst",
         handoff_summary="DA handoff",
         artifact={},
     )
-    prior = team_memory_store.get_prior_handoffs("t1", "data_scientist")
-    assert "DE handoff" in prior
-    assert "DA handoff" in prior
-
+    # ROLE_ORDER is DE → DS → DA → BA — prior to DA includes DE + DS.
+    prior_da = team_memory_store.get_prior_handoffs("t1", "data_analyst")
+    assert "DE handoff" in prior_da
+    assert "DS handoff" in prior_da
+    assert "DA handoff" not in prior_da
+    prior_ds = team_memory_store.get_prior_handoffs("t1", "data_scientist")
+    assert "DE handoff" in prior_ds
+    assert "DS handoff" not in prior_ds
+    assert "DA handoff" not in prior_ds
 
 def test_feedback_router_da_glossary(temp_storage):
     async def run():

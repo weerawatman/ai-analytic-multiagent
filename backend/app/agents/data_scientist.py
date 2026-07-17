@@ -16,6 +16,45 @@ SQL_FAILED_CRITIQUE_TH = (
     "— แนะนำให้ปรับคำถามให้เจาะจงขึ้น (ระบุช่วงเวลา/หน่วยงาน) แล้วถามใหม่"
 )
 
+# Pre-analysis planning (collaborative Explore: DE → DS → DA → BA)
+PLAN_PROMPT = """{skill}
+
+You are a Data Scientist planning the analytical approach BEFORE SQL is written.
+Use DE schema context and the CEO question to propose hypotheses, grain, filters,
+and sanity checks the Data Analyst should bake into SQL. Respond in Thai for narrative; SQL hints in English.
+
+Discovery context:
+{discovery_context}
+
+Knowledge:
+{knowledge_context}
+
+CEO feedback:
+{ceo_feedback_context}
+
+Team memory:
+{team_memory_context}
+
+Data Engineer context:
+{schema_info}
+
+Required sections:
+HYPOTHESES:
+- <testable analytical hypotheses>
+APPROACH:
+- <how DA should shape SQL / grain / filters>
+ALT_SQL: <sanity-check query idea the analyst can adapt>
+ASSUMPTIONS:
+- <assumptions to validate>
+UNKNOWNS:
+- <gaps>
+QUESTIONS_FOR_BA_DA:
+- <specific validation questions>
+CONFIDENCE: high|medium|low
+CRITIQUE: <Thai planning guidance for the analyst — no ML training, strategy only>
+"""
+
+# Post-analysis critique (legacy / non-collaborative Explore path after DA)
 CRITIQUE_PROMPT = """{skill}
 
 You are a Data Scientist reviewing a draft analytics insight (Explore mode).
@@ -63,12 +102,12 @@ Include ALT_SQL, ASSUMPTIONS, UNKNOWNS, QUESTIONS_FOR_BA_DA, CONFIDENCE, CRITIQU
 
 
 async def explore_critique_node(state: AgentState) -> dict:
-    """Challenge analyst assumptions in Explore pipeline."""
-    logger.info("Explore critique node thread=%s", state.thread_id)
+    """DS step in Explore: plan approach pre-SQL, or critique post-SQL on legacy paths."""
+    logger.info("Explore DS node thread=%s has_query=%s", state.thread_id, bool(state.query_result))
 
-    # Phase D graceful degradation — with sql_failed the analyst output is
-    # failure text; critiquing it would only echo error detail into the CEO
-    # report. Return a deterministic polite note instead of calling the LLM.
+    # Phase D graceful degradation — only when this node runs after a failed
+    # analyst pass (non-collaborative Explore). Pre-analysis planning never
+    # sees sql_failed yet.
     if state.sql_failed:
         return {
             "messages": [AIMessage(content=SQL_FAILED_CRITIQUE_TH, name="data_scientist")],
@@ -78,28 +117,37 @@ async def explore_critique_node(state: AgentState) -> dict:
         }
 
     skill = load_agent_skill("data_scientist")
+    planning = not (state.query_result or "").strip()
 
-    messages = [
-        {
-            "role": "system",
-            "content": CRITIQUE_PROMPT.format(
-                skill=skill,
-                discovery_context=state.discovery_context or "(none)",
-                knowledge_context=state.knowledge_context or "(none)",
-                ceo_feedback_context=state.ceo_feedback_context or "(none)",
-                team_memory_context=state.team_memory_context or "(none)",
-                query_result=state.query_result,
-            ),
-        }
-    ]
+    if planning:
+        system_content = PLAN_PROMPT.format(
+            skill=skill,
+            discovery_context=state.discovery_context or "(none)",
+            knowledge_context=state.knowledge_context or "(none)",
+            ceo_feedback_context=state.ceo_feedback_context or "(none)",
+            team_memory_context=state.team_memory_context or "(none)",
+            schema_info=state.schema_info or "(none)",
+        )
+    else:
+        system_content = CRITIQUE_PROMPT.format(
+            skill=skill,
+            discovery_context=state.discovery_context or "(none)",
+            knowledge_context=state.knowledge_context or "(none)",
+            ceo_feedback_context=state.ceo_feedback_context or "(none)",
+            team_memory_context=state.team_memory_context or "(none)",
+            query_result=state.query_result,
+        )
+
+    messages = [{"role": "system", "content": system_content}]
 
     step_errors: list[str] = []
     try:
         response = await llm.ainvoke(messages)
         content: str = response.content  # type: ignore[assignment]
     except Exception as e:
-        logger.exception("Critique LLM failed")
-        content = f"CRITIQUE: ไม่สามารถ critique ได้ชั่วคราว ({type(e).__name__})"
+        logger.exception("DS explore node LLM failed")
+        label = "วางแผน" if planning else "critique"
+        content = f"CRITIQUE: ไม่สามารถ{label}ได้ชั่วคราว ({type(e).__name__})"
         step_errors.append(f"explore_critique: {e}")
 
     return {

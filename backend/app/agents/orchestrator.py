@@ -89,8 +89,10 @@ def after_analyst(state: AgentState) -> str:
             state.thread_id,
         )
         return "retry_sql"
+    # Collaborative Explore: DS already ran (plan) before DA → go to BA.
     if state.mode == "explore" and state.use_collaborative_flow:
-        return "explore_critique"
+        return "business_analyst"
+    # Trusted / non-collab: summarize; legacy non-collab Explore still critiques after DA.
     return "summarize" if state.mode == "trusted" else "explore_critique"
 
 
@@ -98,7 +100,10 @@ def after_scientist(state: AgentState) -> str:
     return "quality_assembly" if state.mode == "explore" else "summarize"
 
 
-def after_critique_collab(state: AgentState) -> str:
+def after_explore_critique(state: AgentState) -> str:
+    """Route DS output: pre-SQL plan → DA; post-SQL critique → BA / quality."""
+    if not (state.query_result or "").strip():
+        return "data_analyst"
     return "business_analyst" if state.use_collaborative_flow else "quality_assembly"
 
 
@@ -182,22 +187,26 @@ def build_graph() -> StateGraph:
         {"collaborative": "de_context", "router": "router"},
     )
 
-    # Collaborative Explore pipeline
-    builder.add_edge("de_context", "data_analyst")
+    # Collaborative Explore pipeline: DE → DS (plan) → DA → BA → quality
+    builder.add_edge("de_context", "explore_critique")
+    builder.add_conditional_edges(
+        "explore_critique",
+        after_explore_critique,
+        {
+            "data_analyst": "data_analyst",
+            "business_analyst": "business_analyst",
+            "quality_assembly": "quality_assembly",
+        },
+    )
     builder.add_conditional_edges(
         "data_analyst",
         after_analyst,
         {
             "retry_sql": "data_analyst",
+            "business_analyst": "business_analyst",
             "explore_critique": "explore_critique",
             "summarize": "summarize",
         },
-    )
-
-    builder.add_conditional_edges(
-        "explore_critique",
-        after_critique_collab,
-        {"business_analyst": "business_analyst", "quality_assembly": "quality_assembly"},
     )
     builder.add_edge("business_analyst", "quality_assembly")
     builder.add_edge("quality_assembly", "summarize")

@@ -1,4 +1,7 @@
-"""Onboarding nodes — each role does homework before CEO asks questions."""
+"""Onboarding nodes — each role does homework before CEO asks questions.
+
+Order: DE (structure) → DS (hypotheses / approach) → DA (metric + SQL draft) → BA (definitions).
+"""
 
 from __future__ import annotations
 
@@ -29,6 +32,12 @@ def _parse_json_block(text: str) -> dict[str, Any]:
         return {}
 
 
+def _state_get(state: Any, key: str, default: Any = "") -> Any:
+    if isinstance(state, dict):
+        return state.get(key, default)
+    return getattr(state, key, default)
+
+
 async def _invoke_role(
     role: str,
     system: str,
@@ -52,25 +61,32 @@ async def _invoke_role(
         )
 
 
-def _base_context(state: dict[str, Any]) -> str:
+def _base_context(state: Any) -> str:
     parts = [
-        f"Theme: {state.get('theme', '')} (id={state.get('theme_id', '')})",
-        f"\nDiscovery:\n{state.get('discovery_context', '(none)')[:3500]}",
-        f"\nKnowledge:\n{state.get('knowledge_context', '(none)')[:2000]}",
-        f"\nSQL Reference:\n{state.get('sql_reference_context', '(none)')[:2000]}",
+        f"Theme: {_state_get(state, 'theme', '')} (id={_state_get(state, 'theme_id', '')})",
+        f"\nDiscovery:\n{_state_get(state, 'discovery_context', '(none)')[:3500]}",
+        f"\nKnowledge:\n{_state_get(state, 'knowledge_context', '(none)')[:2000]}",
+        f"\nSQL Reference:\n{_state_get(state, 'sql_reference_context', '(none)')[:2000]}",
     ]
-    prior = state.get("prior_handoffs", "")
+    prior = _state_get(state, "prior_handoffs", "")
     if prior:
         parts.append(f"\nPrior team handoffs:\n{prior[:2500]}")
-    feedback = state.get("ceo_feedback_context", "")
+    feedback = _state_get(state, "ceo_feedback_context", "")
     if feedback:
         parts.append(f"\nCEO feedback:\n{feedback[:1500]}")
     return "\n".join(parts)
 
 
-async def onboarding_de_node(state: dict[str, Any]) -> dict[str, Any]:
-    theme_id = state["theme_id"]
-    theme = state.get("theme", "")
+def _theme_id(state: Any) -> str:
+    theme_id = _state_get(state, "theme_id", "")
+    if not theme_id:
+        raise KeyError("theme_id")
+    return str(theme_id)
+
+
+async def onboarding_de_node(state: Any) -> dict[str, Any]:
+    theme_id = _theme_id(state)
+    theme = _state_get(state, "theme", "")
     skill = load_agent_skill("data_engineer")
     ctx = _base_context(state)
     prompt = f"""{skill}
@@ -79,7 +95,7 @@ You are onboarding this theme BEFORE the CEO asks questions.
 Analyze structure, grain, keys, relationships, and data quality flags.
 
 Return TWO parts:
-1) HANDOFF: Thai summary (max 400 words) for the Data Analyst
+1) HANDOFF: Thai summary (max 400 words) for the Data Scientist
 2) JSON artifact on its own line:
 {{"relationships":[{{"from_table":"","to_table":"","join_keys":"","notes_th":""}}],"quality_flags":[""],"primary_tables":[""]}}
 
@@ -97,34 +113,99 @@ Return TWO parts:
         artifact=artifact,
         theme_name=theme,
     )
+    role_artifacts = dict(_state_get(state, "role_artifacts", {}) or {})
+    role_artifacts["data_engineer"] = artifact
     return {
         "schema_info": handoff,
-        "role_artifacts": {**state.get("role_artifacts", {}), "data_engineer": artifact},
+        "role_artifacts": role_artifacts,
         "messages": [AIMessage(content=handoff, name="data_engineer")],
         "current_agent": "data_engineer",
     }
 
 
-async def onboarding_da_node(state: dict[str, Any]) -> dict[str, Any]:
-    theme_id = state["theme_id"]
-    theme = state.get("theme", "")
+async def onboarding_ds_node(state: Any) -> dict[str, Any]:
+    """Plan hypotheses / analytical approach from DE structure — before DA writes SQL."""
+    theme_id = _theme_id(state)
+    theme = _state_get(state, "theme", "")
+    skill = load_agent_skill("data_scientist")
+    state_with_handoff = {
+        "theme": theme,
+        "theme_id": theme_id,
+        "discovery_context": _state_get(state, "discovery_context", ""),
+        "knowledge_context": _state_get(state, "knowledge_context", ""),
+        "sql_reference_context": _state_get(state, "sql_reference_context", ""),
+        "ceo_feedback_context": _state_get(state, "ceo_feedback_context", ""),
+        "prior_handoffs": _state_get(state, "schema_info", ""),
+    }
+    ctx = _base_context(state_with_handoff)
+    prompt = f"""{skill}
+
+Onboarding planning — use DE structure to propose analytical hypotheses BEFORE SQL is written.
+Suggest approach, grain risks, sanity checks the analyst should bake into SQL, confidence.
+
+Return:
+1) HANDOFF: Thai guidance for Data Analyst (hypotheses, approach, risks to watch)
+2) JSON:
+{{"hypotheses":[""],"approach_th":"","sanity_checks":[""],"risks":[""],"confidence":"high|medium|low","recommended_validations":[""]}}
+
+{ctx}
+
+Data Engineer handoff:
+{_state_get(state, 'schema_info', '(none)')[:1500]}"""
+    content = await _invoke_role("data_scientist", prompt, "Complete DS onboarding — approach planning.")
+    artifact = _parse_json_block(content)
+    handoff = content.split("{")[0].replace("HANDOFF:", "").strip()[:2000] or content[:2000]
+
+    update_role_artifact(
+        theme_id,
+        "data_scientist",
+        handoff_summary=handoff,
+        artifact=artifact,
+        theme_name=theme,
+    )
+    role_artifacts = dict(_state_get(state, "role_artifacts", {}) or {})
+    role_artifacts["data_scientist"] = artifact
+    return {
+        "analysis_summary": handoff,
+        "role_artifacts": role_artifacts,
+        "messages": [AIMessage(content=handoff, name="data_scientist")],
+        "current_agent": "data_scientist",
+    }
+
+
+async def onboarding_da_node(state: Any) -> dict[str, Any]:
+    theme_id = _theme_id(state)
+    theme = _state_get(state, "theme", "")
     skill = load_agent_skill("data_analyst")
-    state_with_handoff = {**state, "prior_handoffs": state.get("schema_info", "")}
+    prior = f"{_state_get(state, 'schema_info', '')}\n\n{_state_get(state, 'analysis_summary', '')}"
+    state_with_handoff = {
+        "theme": theme,
+        "theme_id": theme_id,
+        "discovery_context": _state_get(state, "discovery_context", ""),
+        "knowledge_context": _state_get(state, "knowledge_context", ""),
+        "sql_reference_context": _state_get(state, "sql_reference_context", ""),
+        "ceo_feedback_context": _state_get(state, "ceo_feedback_context", ""),
+        "prior_handoffs": prior,
+    }
     ctx = _base_context(state_with_handoff)
     prompt = f"""{skill}
 
 Onboarding task — propose measurable metrics and candidate SQL using ONLY columns from context.
+Follow Data Scientist guidance (hypotheses / sanity checks) when shaping SQL.
 Do NOT use raw SAP names (FKDAT, NETWR) unless they appear in discovery.
 
 Return:
-1) HANDOFF: Thai summary for Data Scientist (metrics, SQL approach, assumptions)
+1) HANDOFF: Thai summary for Business Analyst (metrics, SQL approach, assumptions)
 2) JSON:
 {{"metric_candidates":[{{"name_th":"","definition_th":"","tables":[],"columns":[]}}],"sample_sql":"","assumptions":[""]}}
 
 {ctx}
 
 Data Engineer handoff:
-{state.get('schema_info', '(none)')[:1500]}"""
+{_state_get(state, 'schema_info', '(none)')[:1200]}
+
+Data Scientist guidance:
+{_state_get(state, 'analysis_summary', '(none)')[:1200]}"""
     content = await _invoke_role("data_analyst", prompt, "Complete DA onboarding — metric candidates.")
     artifact = _parse_json_block(content)
     handoff = content.split("{")[0].replace("HANDOFF:", "").strip()[:2000] or content[:2000]
@@ -136,57 +217,19 @@ Data Engineer handoff:
         artifact=artifact,
         theme_name=theme,
     )
+    role_artifacts = dict(_state_get(state, "role_artifacts", {}) or {})
+    role_artifacts["data_analyst"] = artifact
     return {
         "query_result": handoff,
-        "role_artifacts": {**state.get("role_artifacts", {}), "data_analyst": artifact},
+        "role_artifacts": role_artifacts,
         "messages": [AIMessage(content=handoff, name="data_analyst")],
         "current_agent": "data_analyst",
     }
 
 
-async def onboarding_ds_node(state: dict[str, Any]) -> dict[str, Any]:
-    theme_id = state["theme_id"]
-    theme = state.get("theme", "")
-    skill = load_agent_skill("data_scientist")
-    prior = f"{state.get('schema_info', '')}\n\n{state.get('query_result', '')}"
-    state_with_handoff = {**state, "prior_handoffs": prior}
-    ctx = _base_context(state_with_handoff)
-    prompt = f"""{skill}
-
-Onboarding critique — review DE structure and DA metric proposals.
-Flag sanity checks, risks, confidence level.
-
-Return:
-1) HANDOFF: Thai critique for Business Analyst
-2) JSON:
-{{"sanity_checks":[""],"risks":[""],"confidence":"high|medium|low","recommended_validations":[""]}}
-
-{ctx}
-
-Analyst handoff:
-{state.get('query_result', '(none)')[:1500]}"""
-    content = await _invoke_role("data_scientist", prompt, "Complete DS onboarding critique.")
-    artifact = _parse_json_block(content)
-    handoff = content.split("{")[0].replace("HANDOFF:", "").strip()[:2000] or content[:2000]
-
-    update_role_artifact(
-        theme_id,
-        "data_scientist",
-        handoff_summary=handoff,
-        artifact=artifact,
-        theme_name=theme,
-    )
-    return {
-        "analysis_summary": handoff,
-        "role_artifacts": {**state.get("role_artifacts", {}), "data_scientist": artifact},
-        "messages": [AIMessage(content=handoff, name="data_scientist")],
-        "current_agent": "data_scientist",
-    }
-
-
-async def onboarding_ba_node(state: dict[str, Any]) -> dict[str, Any]:
-    theme_id = state["theme_id"]
-    theme = state.get("theme", "")
+async def onboarding_ba_node(state: Any) -> dict[str, Any]:
+    theme_id = _theme_id(state)
+    theme = _state_get(state, "theme", "")
     skill = load_agent_skill("business_analyst")
     ctx = _base_context(state)
     prompt = f"""{skill}
@@ -201,9 +244,9 @@ Return:
 {ctx}
 
 Full team context:
-DE: {state.get('schema_info', '')[:800]}
-DA: {state.get('query_result', '')[:800]}
-DS: {state.get('analysis_summary', '')[:800]}"""
+DE: {_state_get(state, 'schema_info', '')[:800]}
+DS: {_state_get(state, 'analysis_summary', '')[:800]}
+DA: {_state_get(state, 'query_result', '')[:800]}"""
     content = await _invoke_role("business_analyst", prompt, "Complete BA onboarding definitions.")
     artifact = _parse_json_block(content)
     handoff = content.split("{")[0].replace("HANDOFF:", "").strip()[:2000] or content[:2000]
@@ -215,22 +258,24 @@ DS: {state.get('analysis_summary', '')[:800]}"""
         artifact=artifact,
         theme_name=theme,
     )
+    role_artifacts = dict(_state_get(state, "role_artifacts", {}) or {})
+    role_artifacts["business_analyst"] = artifact
     return {
         "ba_summary": handoff,
-        "role_artifacts": {**state.get("role_artifacts", {}), "business_analyst": artifact},
+        "role_artifacts": role_artifacts,
         "messages": [AIMessage(content=handoff, name="business_analyst")],
         "current_agent": "business_analyst",
     }
 
 
-async def onboarding_finalize_node(state: dict[str, Any]) -> dict[str, Any]:
+async def onboarding_finalize_node(state: Any) -> dict[str, Any]:
     from backend.app.services.team_memory_store import finalize_team_memory
 
-    theme_id = state["theme_id"]
-    artifacts = state.get("role_artifacts", {})
-    ba = artifacts.get("business_analyst", {})
-    de = artifacts.get("data_engineer", {})
-    da = artifacts.get("data_analyst", {})
+    theme_id = _theme_id(state)
+    artifacts = _state_get(state, "role_artifacts", {}) or {}
+    ba = artifacts.get("business_analyst", {}) or {}
+    de = artifacts.get("data_engineer", {}) or {}
+    da = artifacts.get("data_analyst", {}) or {}
 
     recommended = de.get("primary_tables") or []
     primary = ba.get("recommended_primary_table")
@@ -241,11 +286,15 @@ async def onboarding_finalize_node(state: dict[str, Any]) -> dict[str, Any]:
     if not metrics:
         metrics = [m.get("name_th", "") for m in da.get("metric_candidates", []) if m.get("name_th")]
 
-    team_summary = state.get("ba_summary") or state.get("analysis_summary") or "Onboarding completed."
+    team_summary = (
+        _state_get(state, "ba_summary")
+        or _state_get(state, "analysis_summary")
+        or "Onboarding completed."
+    )
 
     finalize_team_memory(
         theme_id,
-        team_summary=team_summary[:3000],
+        team_summary=str(team_summary)[:3000],
         recommended_tables=[str(t) for t in recommended[:8]],
         key_metrics=[str(m) for m in metrics[:8]],
         status="completed",

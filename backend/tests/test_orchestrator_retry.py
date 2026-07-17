@@ -46,7 +46,7 @@ def test_after_analyst_stops_when_sql_failed():
         mode="explore",
         use_collaborative_flow=True,
     )
-    assert after_analyst(state) == "explore_critique"
+    assert after_analyst(state) == "business_analyst"
 
 
 def test_after_analyst_trusted_path_without_error():
@@ -163,7 +163,12 @@ async def test_loop_back_exactly_three_attempts(temp_storage, monkeypatch):
     builder.add_conditional_edges(
         "data_analyst",
         after_analyst,
-        {"retry_sql": "data_analyst", "explore_critique": "done", "summarize": "done"},
+        {
+            "retry_sql": "data_analyst",
+            "business_analyst": "done",
+            "explore_critique": "done",
+            "summarize": "done",
+        },
     )
     builder.add_edge("done", END)
     graph = builder.compile()
