@@ -70,7 +70,7 @@ def _fail_job_on_timeout(job_id: str, max_seconds: int) -> None:
     """Mark a job failed after its wall-clock budget with a polite Thai error."""
     msg = (
         f"งานใช้เวลาเกินกำหนด {max_seconds} วินาที ระบบจึงหยุดงานเพื่อไม่ให้ค้าง "
-        "— กรุณาลองใหม่ หรือปรับคำถามให้แคบลง (wall-clock timeout)"
+        "— กรุณาลองใหม่ หรือปรับคำถามให้แคบลง (เกินเวลาที่กำหนดของงาน)"
     )
     job = job_store.get_job(job_id)
     if job and job.get("current_step"):
@@ -373,7 +373,7 @@ async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
                         job_id,
                         "consultant_review",
                         "failed",
-                        f"consultant review timed out ({consultant_seconds}s) — skipped",
+                        f"ขั้นตอนตรวจทานของที่ปรึกษาเกินเวลา ({consultant_seconds} วินาที) — ข้ามขั้นตอนนี้",
                     )
                 else:
                     job_store.finish_step(

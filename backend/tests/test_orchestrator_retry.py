@@ -103,11 +103,33 @@ async def test_summarize_without_failure_unchanged():
 def test_error_classes_have_retry_guidance():
     assert _classify_sql_error(RowCountExceeded(99999, 50000)) == "row_count"
     assert _classify_sql_error("Invalid column name 'FOO'. (42S22)") == "invalid_column"
+    assert _classify_sql_error(TimeoutError("HYT00 Query timeout expired")) == "timeout"
+    assert _classify_sql_error(RuntimeError("Login failed for user")) == "connection"
     assert _classify_sql_error(RuntimeError("syntax near")) == "generic"
-    for klass in ("row_count", "invalid_column", "generic"):
+    for klass in ("row_count", "invalid_column", "timeout", "connection", "generic"):
         text = _retry_guidance(klass, "detail")
         assert "Error detail" in text
         assert len(text) > 20
+
+
+def test_friendly_sql_error_omits_raw_odbc():
+    from backend.app.agents.data_analyst import _friendly_sql_error
+
+    raw = Exception(
+        "[42000] [Microsoft][ODBC Driver 18 for SQL Server]Incorrect syntax near 'FROM'"
+    )
+    friendly = _friendly_sql_error(raw)
+    assert friendly == "รัน SQL ไม่สำเร็จ (Exception)"
+    for banned in ("ODBC", "42000", "Microsoft", "Incorrect syntax", "FROM"):
+        assert banned not in friendly
+
+    col = Exception("Invalid column name 'BADCOL'. (42S22)")
+    assert _friendly_sql_error(col) == "ชื่อคอลัมน์ใน SQL ไม่ถูกต้อง (Exception)"
+    assert "BADCOL" not in _friendly_sql_error(col)
+
+    timed = TimeoutError("HYT00 Query timeout expired")
+    assert "เกินเวลา" in _friendly_sql_error(timed)
+    assert "HYT00" not in _friendly_sql_error(timed)
 
 
 @pytest.mark.anyio
@@ -193,7 +215,13 @@ async def test_fail_sql_attempt_logs_and_counts(temp_storage, monkeypatch, error
     assert out["sql_failed"] is False
     assert out["sql_error"]
     assert "Traceback" not in out["sql_error"]
+    # Surface must not embed raw exception / ODBC detail — type + class only.
+    assert "Incorrect syntax" not in out["sql_error"]
+    assert "42S22" not in out["sql_error"]
+    assert "Invalid column" not in out["sql_error"]
     assert logged and logged[0]["retry_count"] == 1
+    # PDCA (file-only) still receives the full exception text for debugging.
+    assert ":" in logged[0]["error"]
 
     state2 = AgentState(sql_retry_count=2, messages=[HumanMessage(content="q")])
     out2 = await _fail_sql_attempt(state2, "base", "SELECT 1", error, "sales", "q", [])

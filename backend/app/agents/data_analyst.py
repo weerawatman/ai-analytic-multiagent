@@ -141,11 +141,32 @@ def _last_user_prompt(state: AgentState) -> str:
 
 
 def _classify_sql_error(error: BaseException | str) -> str:
+    """Map an exception (or prior friendly summary) to a retry/PDCA class.
+
+    Classes stay coarse on purpose: enough signal for guidance without
+    embedding raw ODBC text into state.sql_error / quality_payload.
+    """
     text = str(error)
-    if isinstance(error, RowCountExceeded) or "เกินเกณฑ์" in text or "exceeds threshold" in text.lower():
+    lower = text.lower()
+    if isinstance(error, RowCountExceeded) or "เกินเกณฑ์" in text or "exceeds threshold" in lower:
         return "row_count"
     if "Invalid column name" in text or "42S22" in text or "ชื่อคอลัมน์" in text:
         return "invalid_column"
+    if (
+        "timeout" in lower
+        or "timed out" in lower
+        or "HYT00" in text
+        or "เกินเวลา" in text
+    ):
+        return "timeout"
+    if (
+        "connection" in lower
+        or "login failed" in lower
+        or "08001" in text
+        or "08S01" in text
+        or "เชื่อมต่อ" in text
+    ):
+        return "connection"
     return "generic"
 
 
@@ -163,6 +184,17 @@ def _retry_guidance(error_class: str, error: str) -> str:
             "Fix using ONLY columns from the schema context below.\n"
             f"Error detail: {error}"
         )
+    if error_class == "timeout":
+        return (
+            "The previous SQL timed out. Narrow the query (filters, TOP/LIMIT, smaller date range).\n"
+            f"Error detail: {error}"
+        )
+    if error_class == "connection":
+        return (
+            "The previous SQL failed due to a database connection problem. "
+            "Keep the same SELECT shape; a reconnect may succeed on retry.\n"
+            f"Error detail: {error}"
+        )
     return (
         "The previous SQL failed. Fix the syntax/logic and keep it a single SELECT/WITH.\n"
         f"Error detail: {error}"
@@ -170,14 +202,18 @@ def _retry_guidance(error_class: str, error: str) -> str:
 
 
 def _friendly_sql_error(error: BaseException) -> str:
+    """CEO/job-visible SQL error: exception type + class, never raw ODBC text."""
     if isinstance(error, RowCountExceeded):
         return error.message_th
     klass = _classify_sql_error(error)
+    type_name = type(error).__name__
     if klass == "invalid_column":
-        return f"ชื่อคอลัมน์ใน SQL ไม่ถูกต้อง ({type(error).__name__})"
-    # Keep a short, non-traceback summary for the CEO-facing path.
-    detail = str(error).splitlines()[0][:200]
-    return f"รัน SQL ไม่สำเร็จ ({type(error).__name__}: {detail})"
+        return f"ชื่อคอลัมน์ใน SQL ไม่ถูกต้อง ({type_name})"
+    if klass == "timeout":
+        return f"การรัน SQL เกินเวลาที่กำหนด ({type_name})"
+    if klass == "connection":
+        return f"เชื่อมต่อฐานข้อมูลไม่สำเร็จ ({type_name})"
+    return f"รัน SQL ไม่สำเร็จ ({type_name})"
 
 
 async def _retry_sql_with_error(
@@ -379,7 +415,15 @@ async def _fail_sql_attempt(
 ) -> dict:
     friendly = _friendly_sql_error(error)
     new_count = state.sql_retry_count + 1
-    await log_sql_failure(theme_id, user_prompt, sql, friendly, new_count)
+    # PDCA is file-only — keep full exception text there for debugging.
+    # Job/CEO surfaces use ``friendly`` (type + class, no raw ODBC).
+    await log_sql_failure(
+        theme_id,
+        user_prompt,
+        sql,
+        f"{type(error).__name__}: {error}",
+        new_count,
+    )
     sql_failed = new_count >= MAX_SQL_ATTEMPTS
     content = (content or "") + f"\n\nSQL_ATTEMPT_FAILED: {friendly}"
     if sql_failed:

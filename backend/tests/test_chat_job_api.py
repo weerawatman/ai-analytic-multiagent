@@ -197,7 +197,9 @@ async def test_chat_job_wall_clock_timeout(client: AsyncClient, temp_storage, mo
     assert response.status_code == 202
     job = await _poll_until_done(client, response.json()["job_id"], timeout=10.0)
     assert job["status"] == "failed"
-    assert "wall-clock" in job["error"].lower() or "1200" in job["error"] or "limit" in job["error"].lower()
+    assert "เกินกำหนด" in job["error"]
+    assert "เกินเวลาที่กำหนดของงาน" in job["error"]
+    assert "wall-clock" not in job["error"].lower()
     get_settings.cache_clear()
 
 
@@ -234,7 +236,10 @@ async def test_chat_job_consultant_review_timeout_continues(
     assert job["result"]["content"] == "คำตอบสุดท้ายจากทีม"
     review_steps = [p for p in job["progress"] if p["step"] == "consultant_review"]
     assert review_steps and review_steps[-1]["status"] == "failed"
-    assert "timed out" in (review_steps[-1].get("note") or "")
+    note = review_steps[-1].get("note") or ""
+    assert "เกินเวลา" in note
+    assert "ข้าม" in note
+    assert "timed out" not in note.lower()
     get_settings.cache_clear()
 
 
@@ -348,9 +353,43 @@ async def test_onboarding_job_wall_clock_timeout(temp_storage, monkeypatch):
     job = await _poll_store_until_done(job["id"])
     assert job["status"] == "failed"
     assert "เกินกำหนด" in job["error"]
-    assert "wall-clock" in job["error"].lower()
+    assert "เกินเวลาที่กำหนดของงาน" in job["error"]
+    assert "wall-clock" not in job["error"].lower()
     steps = [p for p in job["progress"] if p["step"] == "onboarding"]
     assert steps and steps[-1]["status"] == "failed"
+    assert job["current_step"] is None
+    get_settings.cache_clear()
+
+
+async def test_onboarding_job_timeout_during_coach(temp_storage, monkeypatch):
+    """Wall-clock cap must also fire while consultant_coach is hanging."""
+    from backend.app.services import consultant_service
+
+    job_store.init_jobs_db()
+    monkeypatch.setenv("ONBOARDING_JOB_MAX_SECONDS", "1")
+    from backend.app.core.config import get_settings
+
+    get_settings.cache_clear()
+
+    async def fast_onboarding(theme_id, theme_name=""):
+        return {"theme_id": theme_id, "status": "completed"}
+
+    async def hung_coach(theme_id, theme_name=""):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(job_runner, "run_onboarding", fast_onboarding)
+    monkeypatch.setattr(
+        consultant_service, "is_enabled", lambda mode: mode == "coach_onboarding"
+    )
+    monkeypatch.setattr(consultant_service, "coach_team", hung_coach)
+
+    job = job_runner.start_onboarding_job("theme-coach-hang", "ยอดขาย")
+    job = await _poll_store_until_done(job["id"])
+    assert job["status"] == "failed"
+    assert "เกินกำหนด" in job["error"]
+    assert "เกินเวลาที่กำหนดของงาน" in job["error"]
+    coach_steps = [p for p in job["progress"] if p["step"] == "consultant_coach"]
+    assert coach_steps and coach_steps[-1]["status"] == "failed"
     assert job["current_step"] is None
     get_settings.cache_clear()
 
@@ -375,7 +414,8 @@ async def test_consult_job_wall_clock_timeout(temp_storage, monkeypatch):
     job = await _poll_store_until_done(job["id"])
     assert job["status"] == "failed"
     assert "เกินกำหนด" in job["error"]
-    assert "wall-clock" in job["error"].lower()
+    assert "เกินเวลาที่กำหนดของงาน" in job["error"]
+    assert "wall-clock" not in job["error"].lower()
     steps = [p for p in job["progress"] if p["step"] == "consult"]
     assert steps and steps[-1]["status"] == "failed"
     assert job["current_step"] is None
