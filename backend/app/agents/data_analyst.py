@@ -144,6 +144,9 @@ Schema Context Pack (columns are authoritative):
 Knowledge layer:
 {knowledge_context}
 
+Metric Registry (approved executable KPIs — prefer these formulas):
+{metric_registry_context}
+
 WH_Silver SQL Reference (DDL column names — authoritative):
 {sql_reference_context}
 
@@ -436,6 +439,7 @@ async def data_analyst_node(state: AgentState) -> dict:
                 mode=state.mode,
                 db_schema=db_schema,
                 knowledge_context=state.knowledge_context or "(none)",
+                metric_registry_context=state.metric_registry_context or "(none)",
                 sql_reference_context=state.sql_reference_context or "(none)",
                 ceo_feedback_context=state.ceo_feedback_context or "(none)",
                 team_memory_context=state.team_memory_context or "(none)",
@@ -514,6 +518,12 @@ async def _fail_sql_attempt(
 ) -> dict:
     friendly = _friendly_sql_error(error)
     new_count = state.sql_retry_count + 1
+    try:
+        from backend.app.services.progress_reporter import note_substep
+
+        note_substep(state.thread_id, f"SQL รอบที่ {new_count}/{MAX_SQL_ATTEMPTS}")
+    except Exception:
+        pass
     # PDCA is file-only — keep full exception text there for debugging.
     # Job/CEO surfaces use ``friendly`` (type + class, no raw ODBC).
     await log_sql_failure(

@@ -1,0 +1,581 @@
+{
+  "version": "1.0",
+  "metrics": [
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.808412+00:00",
+      "updated_at": "2026-07-17T23:32:04.050598+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.808412+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.revenue",
+      "name_th": "รายได้",
+      "name_en": "Revenue",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "Revenue",
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "THB",
+      "derived": null,
+      "baseline_question_tags": [
+        "revenue"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.819339+00:00",
+      "updated_at": "2026-07-17T23:32:04.062848+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.819339+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.revenue_plus_inter",
+      "name_th": "รายได้รวม Inter Company",
+      "name_en": "Revenue + Inter-Company",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "(Inter_Company + Revenue + Return_Revenue)",
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "THB",
+      "derived": null,
+      "baseline_question_tags": [
+        "revenue",
+        "revenue_plus_inter"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.831661+00:00",
+      "updated_at": "2026-07-17T23:32:04.075060+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.831661+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.gross_profit",
+      "name_th": "กำไรขั้นต้น",
+      "name_en": "Gross Profit",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "((Inter_Company + Revenue + Return_Revenue)) - COGS_Actual",
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "THB",
+      "derived": null,
+      "baseline_question_tags": [
+        "gross_profit",
+        "qoq",
+        "yoy"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.843802+00:00",
+      "updated_at": "2026-07-17T23:32:04.090482+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.843802+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.gp_pct",
+      "name_th": "อัตรากำไรขั้นต้น",
+      "name_en": "Gross Profit %",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": null,
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "pct",
+      "derived": {
+        "kind": "ratio",
+        "of": "metric.gross_profit",
+        "over": "metric.revenue_plus_inter"
+      },
+      "baseline_question_tags": [
+        "gross_profit",
+        "gp_pct"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "draft",
+      "created_at": "2026-07-17T23:11:43.854809+00:00",
+      "updated_at": "2026-07-17T23:32:04.104164+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.854809+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.net_profit",
+      "name_th": "กำไรสุทธิ",
+      "name_en": "Net Profit",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": null,
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "THB",
+      "derived": null,
+      "baseline_question_tags": [
+        "net_profit"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": false,
+      "notes": "O-1 ยังเปิดอยู่ (2026-07-18): BA ยังไม่ให้สูตร Net Profit — ห้ามเดาสูตรเอง. สูตรธุรกิจที่ owner ยืนยันแล้ว (source of truth ใน glossary): COGS-Act Vc=KFG0006=VVA02+VVA03+VVA04+VVA08+VVA05+VVA06+VVA10+VVA12+VVA11+VVA07+VVA09; COGS-Act Fc=VVA13+VVA14+VVA16+VVA15+VVA17+VVA19+VVA20+VVA21+VVA22 (ไม่รวม VVA18); COGS-Actual (business)=Vc+Fc (คนละตัวกับคอลัมน์ COGS_Actual=VVA01); Con. Margin=KFG0002-KFG0006; Gross Profit=KFG0002-VVA01; GP Inc. Defect=KFG0002-VVA01-VVC01; Revenue +Inter=KFG0002=VVR06+ERLOS+VVR01"
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.866743+00:00",
+      "updated_at": "2026-07-17T23:32:04.115090+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.866743+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.sales_quantity",
+      "name_th": "ปริมาณขาย",
+      "name_en": "Sales Quantity",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "Sales_Quantity",
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "qty",
+      "derived": null,
+      "baseline_question_tags": [
+        "sales_quantity"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.879472+00:00",
+      "updated_at": "2026-07-17T23:32:04.126029+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.879472+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.sales_per_customer",
+      "name_th": "ยอดขายต่อลูกค้า",
+      "name_en": "Sales per Customer",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": null,
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "THB",
+      "derived": {
+        "kind": "ratio",
+        "of": "metric.revenue_plus_inter",
+        "over": "metric.customer_count"
+      },
+      "baseline_question_tags": [
+        "sales_per_customer"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.891090+00:00",
+      "updated_at": "2026-07-17T23:32:04.138308+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.891090+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.customer_count",
+      "name_th": "จำนวนลูกค้า",
+      "name_en": "Customer Count",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "Customer",
+      "aggregation": "COUNT",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "count",
+      "derived": null,
+      "baseline_question_tags": [
+        "customer"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.903277+00:00",
+      "updated_at": "2026-07-17T23:32:04.150683+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.903277+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.product_champion",
+      "name_th": "สินค้าแชมป์ (รายได้สูงสุด)",
+      "name_en": "Product Champion",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "(Inter_Company + Revenue + Return_Revenue)",
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "THB",
+      "derived": null,
+      "baseline_question_tags": [
+        "product_champion"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 2,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.914656+00:00",
+      "updated_at": "2026-07-17T23:32:04.176948+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.914656+00:00",
+          "reason": "seed"
+        },
+        {
+          "version": 2,
+          "changed_at": "2026-07-17T23:32:04.176948+00:00",
+          "reason": "O-2 provisional approve (Price_Adjustment / Revenue) per owner 2026-07-18"
+        }
+      ],
+      "metric_key": "metric.discount_rate",
+      "name_th": "อัตราส่วนลด",
+      "name_en": "Discount Rate",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": null,
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "pct",
+      "derived": {
+        "kind": "ratio",
+        "of": "metric.price_adjustment",
+        "over": "metric.revenue"
+      },
+      "baseline_question_tags": [
+        "discount_rate"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true,
+      "notes": "O-2 PROVISIONAL (2026-07-18): owner สั่งใช้ชั่วคราว = Price_Adjustment / Revenue จนกว่า BA จะยืนยันนิยาม discount rate อย่างเป็นทางการ — ถ้า BA ให้สูตรใหม่ต้อง update และ bump version. คอลัมน์ Price_Adjustment (VVR02) ยืนยันแล้วว่ามีใน CE1SATG_All_Cleaned"
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.925463+00:00",
+      "updated_at": "2026-07-17T23:32:04.189680+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.925463+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.qoq_revenue",
+      "name_th": "รายได้ QoQ",
+      "name_en": "QoQ Revenue Change",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": null,
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "pct",
+      "derived": {
+        "kind": "period_delta",
+        "of": "metric.revenue_plus_inter",
+        "lag_months": 3
+      },
+      "baseline_question_tags": [
+        "qoq",
+        "revenue"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true,
+      "notes": "O-3 RESOLVED (2026-07-18): owner เลือกฐานเวลา fiscal. ตรวจแล้ว Period_Year (PERIO) คือ Fiscal_Year (GJAHR) + Period (PERDE) ต่อกัน เช่น '2025005' = '2025'+'005' และตรงกับ SourceMonth '202505' — จึงใช้ SourceMonth (YYYYMM) เป็น time_column ได้ เพราะเทียบเท่า Fiscal_Year+Period ที่ granularity เดือน"
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.936721+00:00",
+      "updated_at": "2026-07-17T23:32:04.201653+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.936721+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.yoy_revenue",
+      "name_th": "รายได้ YoY",
+      "name_en": "YoY Revenue Change",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": null,
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "pct",
+      "derived": {
+        "kind": "period_delta",
+        "of": "metric.revenue_plus_inter",
+        "lag_months": 12
+      },
+      "baseline_question_tags": [
+        "yoy",
+        "revenue"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true,
+      "notes": "O-3 RESOLVED (2026-07-18): owner เลือกฐานเวลา fiscal. ตรวจแล้ว Period_Year (PERIO) คือ Fiscal_Year (GJAHR) + Period (PERDE) ต่อกัน เช่น '2025005' = '2025'+'005' และตรงกับ SourceMonth '202505' — จึงใช้ SourceMonth (YYYYMM) เป็น time_column ได้ เพราะเทียบเท่า Fiscal_Year+Period ที่ granularity เดือน"
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.947145+00:00",
+      "updated_at": "2026-07-17T23:32:04.212524+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.947145+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.customer_new",
+      "name_th": "ลูกค้าใหม่",
+      "name_en": "New Customers",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "Customer",
+      "aggregation": "COUNT",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "count",
+      "derived": null,
+      "baseline_question_tags": [
+        "customer_new"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:11:43.961332+00:00",
+      "updated_at": "2026-07-17T23:32:04.225640+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:11:43.961332+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.customer_churn",
+      "name_th": "ลูกค้าหาย",
+      "name_en": "Churned Customers",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "Customer",
+      "aggregation": "COUNT",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "count",
+      "derived": null,
+      "baseline_question_tags": [
+        "customer_churn"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true
+    },
+    {
+      "version": 1,
+      "status": "approved",
+      "created_at": "2026-07-17T23:32:04.164181+00:00",
+      "updated_at": "2026-07-17T23:32:04.164181+00:00",
+      "history": [
+        {
+          "version": 1,
+          "changed_at": "2026-07-17T23:32:04.164181+00:00",
+          "reason": "seed"
+        }
+      ],
+      "metric_key": "metric.price_adjustment",
+      "name_th": "มูลค่าปรับราคา/ส่วนลด",
+      "name_en": "Price Adjustment",
+      "theme": "Saphanadb",
+      "table": "SAPHANADB.CE1SATG_All_Cleaned",
+      "time_column": "SourceMonth",
+      "time_format": "YYYYMM",
+      "expression": "Price_Adjustment",
+      "aggregation": "SUM",
+      "dimensions": [
+        "Customer",
+        "Product_Number",
+        "Profit_Center",
+        "Sales_Organization",
+        "Material_Group_MATKL"
+      ],
+      "unit": "THB",
+      "derived": null,
+      "baseline_question_tags": [
+        "discount_rate"
+      ],
+      "source": "owner_seed",
+      "owner_confirmed": true,
+      "notes": "O-2 (2026-07-18): คอลัมน์ Price_Adjustment มีจริงใน CE1SATG_All_Cleaned (= VVR02 ตามลำดับ CAST ใน usp_Load_CE1SATG_Month; VVR01=Return_Revenue, VVR04=Price_Adjustment_RM ก็มีแต่ไม่ใช้). ตัวตั้งของ discount rate ชั่วคราว จนกว่า BA จะยืนยันนิยาม"
+    }
+  ]
+}

@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     data_local_dir: str = "data/local"
     data_templates_dir: str = "data/templates"
 
+    # Phase G2 — inject approved Metric Registry into DA prompt
+    metric_registry_in_prompt: bool = True
+
     # Anthropic external consultant (Claude)
     anthropic_api_key: str = ""
     consultant_enabled: bool = False

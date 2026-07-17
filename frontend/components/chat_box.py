@@ -35,3 +35,60 @@ def render_assistant_message(
     st.markdown(f"**[{label}]**")
     render_team_agents(agents_involved)
     st.markdown(content)
+
+
+def render_answer_rating(
+    *,
+    session_id: str,
+    message_index: int,
+    job_id: str | None = None,
+) -> None:
+    """👍/👎 capture under a final assistant answer (Phase G1b)."""
+    from components.api_client import post_json
+
+    key_base = f"rating_{session_id}_{message_index}"
+    if st.session_state.get(f"{key_base}_done"):
+        st.caption("บันทึกคะแนนแล้ว — ขอบคุณครับ")
+        return
+
+    with st.expander("ให้คะแนนคำตอบนี้", expanded=False):
+        c1, c2 = st.columns(2)
+        rating = None
+        with c1:
+            if st.button("👍 มีประโยชน์", key=f"{key_base}_up"):
+                rating = "up"
+        with c2:
+            if st.button("👎 ยังไม่ดี", key=f"{key_base}_down"):
+                rating = "down"
+
+        reason = st.selectbox(
+            "เหตุผล (ถ้า 👎)",
+            options=["", "wrong_number", "wrong_metric", "too_slow", "unclear"],
+            format_func=lambda x: {
+                "": "(ไม่ระบุ)",
+                "wrong_number": "ตัวเลขผิด",
+                "wrong_metric": "metric ผิด",
+                "too_slow": "ช้าเกินไป",
+                "unclear": "อธิบายไม่ชัด",
+            }.get(x, x),
+            key=f"{key_base}_reason",
+        )
+        comment = st.text_input("หมายเหตุ", key=f"{key_base}_comment")
+        corrected = st.text_area("คำตอบที่ถูกต้อง (ถ้ามี)", key=f"{key_base}_corrected")
+
+        if rating:
+            payload = {
+                "session_id": session_id,
+                "rating": rating,
+                "job_id": job_id,
+                "reason_tag": reason or None,
+                "comment": comment or None,
+                "corrected_answer": corrected or None,
+            }
+            try:
+                post_json("/api/v1/chat/rating", payload)
+                st.session_state[f"{key_base}_done"] = True
+                st.success("บันทึกคะแนนแล้ว")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"บันทึกไม่สำเร็จ: {exc}")

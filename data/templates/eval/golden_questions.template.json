@@ -1,0 +1,225 @@
+{
+  "version": "1.0",
+  "questions": [
+    {
+      "id": "gq-001",
+      "question_th": "ยอดขายรวม Inter Company ไตรมาสล่าสุดเท่าไร",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.revenue_plus_inter",
+      "reference": {"kind": "metric_registry", "months": "latest_quarter"},
+      "tolerance_pct": 1.0,
+      "expected_keywords_th": ["ไตรมาส"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-002",
+      "question_th": "รายได้รวม Inter Company เดือนล่าสุดเป็นเท่าไร",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.revenue_plus_inter",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 1.0,
+      "expected_keywords_th": ["รายได้"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-003",
+      "question_th": "กำไรขั้นต้นเดือนล่าสุดเท่าไร",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.gross_profit",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 1.0,
+      "expected_keywords_th": ["กำไร"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-004",
+      "question_th": "Gross Profit รวมล่าสุดเท่าไร",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.gross_profit",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 1.0,
+      "expected_keywords_th": ["กำไรขั้นต้น"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-005",
+      "question_th": "รายได้ (Revenue) เดือนล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.revenue",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 1.0,
+      "expected_keywords_th": ["รายได้"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-006",
+      "question_th": "ยอด Revenue ล่าสุดเป็นเท่าไร",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.revenue",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 1.0,
+      "expected_keywords_th": ["Revenue"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-007",
+      "question_th": "ปริมาณขายเดือนล่าสุดเท่าไร",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.sales_quantity",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 2.0,
+      "expected_keywords_th": ["ปริมาณ"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-008",
+      "question_th": "Sales Quantity รวมล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.sales_quantity",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 2.0,
+      "expected_keywords_th": ["ขาย"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-009",
+      "question_th": "สินค้าที่มียอดขายสูงสุดคืออะไร",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.product_champion",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["สินค้า"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-010",
+      "question_th": "Product champion ตามรายได้เดือนล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.product_champion",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["สินค้า"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-011",
+      "question_th": "จำนวนลูกค้าที่มีธุรกรรมเดือนล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.customer_count",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 2.0,
+      "expected_keywords_th": ["ลูกค้า"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-012",
+      "question_th": "มีลูกค้ากี่รายในเดือนล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.customer_count",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 2.0,
+      "expected_keywords_th": ["ลูกค้า"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-013",
+      "question_th": "ยอดขายต่อลูกค้าเดือนล่าสุดโดยประมาณ",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.sales_per_customer",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["ลูกค้า"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-014",
+      "question_th": "Sales per customer ล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.sales_per_customer",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["ยอดขาย"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-015",
+      "question_th": "อัตรากำไรขั้นต้น (GP%) โดยประมาณเป็นเท่าไร",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.gp_pct",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["กำไร"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-016",
+      "question_th": "Gross profit percent ล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.gp_pct",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["ขั้นต้น"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-017",
+      "question_th": "ลูกค้าใหม่มีกี่รายในช่วงล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.customer_new",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["ลูกค้า"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-018",
+      "question_th": "New customers เดือนล่าสุด",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.customer_new",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["ใหม่"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-019",
+      "question_th": "ลูกค้าที่หายไปมีกี่ราย",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.customer_churn",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["ลูกค้า"],
+      "source": "baseline_seed",
+      "active": true
+    },
+    {
+      "id": "gq-020",
+      "question_th": "Churned customers ล่าสุดประมาณกี่ราย",
+      "theme_id": "sales",
+      "expected_metric_key": "metric.customer_churn",
+      "reference": {"kind": "metric_registry", "months": "latest"},
+      "tolerance_pct": 5.0,
+      "expected_keywords_th": ["หาย"],
+      "source": "baseline_seed",
+      "active": true
+    }
+  ]
+}

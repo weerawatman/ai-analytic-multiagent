@@ -226,9 +226,15 @@ python -m pytest backend/tests/ -q
 
 # Phase 2 Definition of Done checks
 .\scripts\validate-phase2.ps1
+
+# Phase G — Metric Registry seed + golden-question harness baseline
+.\scripts\seed-metric-registry.ps1
+.\scripts\run-golden-eval.ps1 --harness-baseline --write-gate
 ```
 
 Owner sign-off: `knowledge/07-testing/sign-off.md` (Phase 1) · `knowledge/07-testing/phase-2-sign-off.md` (Phase 2)
+
+Phase G→K roadmap: `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` · Phase G handoff: `phases/phase-g-foundation.md`
 
 ---
 
@@ -247,7 +253,8 @@ Scratch files under `data/local/local_data/` (reserved for future parquet / job-
 | Path | Why |
 |------|-----|
 | `data/local/team_memory/` | Onboarding baseline |
-| `data/local/knowledge/` | Glossary, discovery, SQL reference |
+| `data/local/knowledge/` | Glossary, discovery, SQL reference, **metric_registry.json** |
+| `data/local/eval/` | Golden questions + eval results (Phase G3 baseline) |
 | `data/local/models/approved/` | Phase E promoted models (convention reserved now) |
 
 ### Windows Task Scheduler (optional)

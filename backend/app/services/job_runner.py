@@ -122,6 +122,25 @@ def _track(job_id: str, task: asyncio.Task) -> None:
     task.add_done_callback(_done)
 
 
+# Phase G1 — heartbeat ticker lives on the runner (not inside graph nodes)
+# so the pulse continues even while awaiting a long LLM call.
+_HEARTBEAT_INTERVAL_S = 10.0
+
+
+async def _heartbeat_loop(job_id: str) -> None:
+    try:
+        while True:
+            job_store.touch_job(job_id)
+            await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
+    except asyncio.CancelledError:
+        raise
+
+
+def _mark_job_running(job_id: str) -> None:
+    now = _utc_now()
+    job_store.update_job(job_id, status="running", started_at=now, heartbeat_at=now)
+
+
 def cancel_job(job_id: str) -> bool:
     task = _tasks.get(job_id)
     if task is not None and not task.done():
@@ -424,9 +443,11 @@ async def _stream_chat_graph(job_id: str, request: ChatRequest) -> AgentState:
 
 
 async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
+    hb_task: asyncio.Task | None = None
     try:
         async with thread_lock(request.thread_id):
-            job_store.update_job(job_id, status="running", started_at=_utc_now())
+            _mark_job_running(job_id)
+            hb_task = asyncio.create_task(_heartbeat_loop(job_id))
             logger.info(
                 "Chat job %s started: thread=%s mode=%s message=%s...",
                 job_id,
@@ -521,6 +542,13 @@ async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
     except Exception as e:
         logger.exception("Chat job %s failed", job_id)
         _fail_job_on_error(job_id, e)
+    finally:
+        if hb_task is not None:
+            hb_task.cancel()
+            try:
+                await hb_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 def start_onboarding_job(theme_id: str, theme_name: str = "") -> dict[str, Any]:
@@ -604,8 +632,10 @@ async def _run_onboarding_work(job_id: str, theme_id: str, theme_name: str) -> d
 
 
 async def _run_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> None:
+    hb_task: asyncio.Task | None = None
     try:
-        job_store.update_job(job_id, status="running", started_at=_utc_now())
+        _mark_job_running(job_id)
+        hb_task = asyncio.create_task(_heartbeat_loop(job_id))
         # Wall-clock cap for the whole job (multiple Ollama roles + coach) —
         # per-call HTTP timeouts alone cannot bound the total (Phase D review).
         max_seconds = get_settings().onboarding_job_max_seconds
@@ -644,6 +674,13 @@ async def _run_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> No
     except Exception as e:
         logger.exception("Onboarding job %s failed theme=%s", job_id, theme_id)
         _fail_job_on_error(job_id, e)
+    finally:
+        if hb_task is not None:
+            hb_task.cancel()
+            try:
+                await hb_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 def start_deep_onboarding_job(theme_id: str, theme_name: str = "") -> dict[str, Any]:
@@ -667,8 +704,10 @@ def start_deep_onboarding_job(theme_id: str, theme_name: str = "") -> dict[str, 
 
 
 async def _run_deep_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> None:
+    hb_task: asyncio.Task | None = None
     try:
-        job_store.update_job(job_id, status="running", started_at=_utc_now())
+        _mark_job_running(job_id)
+        hb_task = asyncio.create_task(_heartbeat_loop(job_id))
         max_seconds = get_settings().deep_onboarding_max_seconds
         try:
             result = await asyncio.wait_for(
@@ -700,6 +739,13 @@ async def _run_deep_onboarding_job(job_id: str, theme_id: str, theme_name: str) 
     except Exception as e:
         logger.exception("Deep onboarding job %s failed theme=%s", job_id, theme_id)
         _fail_job_on_error(job_id, e)
+    finally:
+        if hb_task is not None:
+            hb_task.cancel()
+            try:
+                await hb_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 def start_consult_job(theme_id: str, question: str) -> dict[str, Any]:
@@ -718,8 +764,10 @@ def start_consult_job(theme_id: str, question: str) -> dict[str, Any]:
 
 
 async def _run_consult_job(job_id: str, theme_id: str, question: str) -> None:
+    hb_task: asyncio.Task | None = None
     try:
-        job_store.update_job(job_id, status="running", started_at=_utc_now())
+        _mark_job_running(job_id)
+        hb_task = asyncio.create_task(_heartbeat_loop(job_id))
         job_store.append_step(job_id, "consult")
         # Same bound as the consultant review step in _run_chat_job — a hung
         # Claude call must not stall the job past its own HTTP timeout.
@@ -767,3 +815,10 @@ async def _run_consult_job(job_id: str, theme_id: str, question: str) -> None:
     except Exception as e:
         logger.exception("Consult job %s failed theme=%s", job_id, theme_id)
         _fail_job_on_error(job_id, e)
+    finally:
+        if hb_task is not None:
+            hb_task.cancel()
+            try:
+                await hb_task
+            except (asyncio.CancelledError, Exception):
+                pass

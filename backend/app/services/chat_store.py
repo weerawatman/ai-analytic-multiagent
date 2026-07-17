@@ -62,8 +62,23 @@ def init_chat_db() -> None:
                 FOREIGN KEY (session_id) REFERENCES sessions(id)
             );
 
+            CREATE TABLE IF NOT EXISTS answer_ratings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                message_id INTEGER,
+                job_id TEXT,
+                rating TEXT NOT NULL,
+                reason_tag TEXT,
+                comment TEXT,
+                corrected_answer TEXT,
+                created_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_messages_session
                 ON messages(session_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_ratings_session
+                ON answer_ratings(session_id, created_at);
             """
         )
 
@@ -162,3 +177,80 @@ def get_messages(session_id: str, limit: int = 200) -> list[dict[str, Any]]:
             (session_id, limit),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+_VALID_RATINGS = frozenset({"up", "down"})
+_VALID_REASON_TAGS = frozenset({"wrong_number", "wrong_metric", "too_slow", "unclear"})
+
+
+def add_answer_rating(
+    session_id: str,
+    *,
+    rating: str,
+    message_id: int | None = None,
+    job_id: str | None = None,
+    reason_tag: str | None = None,
+    comment: str | None = None,
+    corrected_answer: str | None = None,
+) -> dict[str, Any]:
+    if rating not in _VALID_RATINGS:
+        raise ValueError(f"rating must be one of {sorted(_VALID_RATINGS)}")
+    if reason_tag is not None and reason_tag not in _VALID_REASON_TAGS:
+        raise ValueError(f"reason_tag must be one of {sorted(_VALID_REASON_TAGS)}")
+    ensure_session(session_id)
+    now = _utc_now()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO answer_ratings
+                (session_id, message_id, job_id, rating, reason_tag, comment, corrected_answer, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                message_id,
+                job_id,
+                rating,
+                reason_tag,
+                comment,
+                corrected_answer,
+                now,
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM answer_ratings WHERE id = ?", (cursor.lastrowid,)
+        ).fetchone()
+        return dict(row)
+
+
+def list_answer_ratings(
+    session_id: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        if session_id:
+            rows = conn.execute(
+                """
+                SELECT * FROM answer_ratings
+                WHERE session_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (session_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT * FROM answer_ratings
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def count_answer_ratings() -> int:
+    with get_connection() as conn:
+        row = conn.execute("SELECT COUNT(*) AS n FROM answer_ratings").fetchone()
+        return int(row["n"] if row else 0)

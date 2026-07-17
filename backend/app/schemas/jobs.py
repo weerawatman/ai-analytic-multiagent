@@ -31,3 +31,7 @@ class JobStatusResponse(BaseModel):
     created_at: str
     started_at: str | None = None
     finished_at: str | None = None
+    # Phase G1 — heartbeat / liveness
+    heartbeat_at: str | None = None
+    heartbeat_age_s: float | None = None
+    health: str | None = None  # working | stalled | None (terminal)

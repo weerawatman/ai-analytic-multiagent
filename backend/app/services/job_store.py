@@ -39,13 +39,23 @@ def init_jobs_db() -> None:
                 error TEXT,
                 created_at TEXT NOT NULL,
                 started_at TEXT,
-                finished_at TEXT
+                finished_at TEXT,
+                heartbeat_at TEXT
             );
 
             CREATE INDEX IF NOT EXISTS idx_jobs_thread
                 ON jobs(thread_id, created_at);
             """
         )
+        # Idempotent migration for DBs created before Phase G1.
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "heartbeat_at" not in cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN heartbeat_at TEXT")
+
+
+def touch_job(job_id: str) -> None:
+    """Refresh heartbeat_at — called by the runner ticker (~10s) while a job is alive."""
+    update_job(job_id, heartbeat_at=_utc_now())
 
 
 def _row_to_job(row: Any) -> dict[str, Any]:

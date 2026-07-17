@@ -12,11 +12,14 @@ from backend.app.api.routes import (
     chat,
     consultant,
     discovery,
+    eval as eval_routes,
     fabric,
     feedback,
     jobs,
     knowledge,
+    metrics,
     onboarding,
+    ratings,
     semantic,
     sessions,
     themes,
@@ -74,6 +77,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 # Routes
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(ratings.router, prefix="/api/v1")
+app.include_router(metrics.router, prefix="/api/v1")
+app.include_router(eval_routes.router, prefix="/api/v1")
 app.include_router(approval.router, prefix="/api/v1")
 app.include_router(fabric.router, prefix="/api/v1")
 app.include_router(backlog.router, prefix="/api/v1")

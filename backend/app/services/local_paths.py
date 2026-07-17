@@ -44,6 +44,7 @@ CLEANUP_PRESERVE_RELATIVE = (
     "team_memory",
     "knowledge",
     "models/approved",
+    "eval",
 )
 
 
@@ -63,11 +64,13 @@ def ensure_local_structure(settings: Settings | None = None) -> None:
         "logs",
         "local_data",  # Phase E scratch (parquet / job models) — convention only in Phase D
         "models",
+        "eval",  # Phase G3 golden questions + results
     ):
         (local / name).mkdir(parents=True, exist_ok=True)
 
     (local / "knowledge" / "themes").mkdir(parents=True, exist_ok=True)
     (local / "models" / "approved").mkdir(parents=True, exist_ok=True)
+    (local / "eval" / "results").mkdir(parents=True, exist_ok=True)
 
     for rel, default in (
         ("semantic/trusted.json", '{"version": "1.0", "metrics": []}'),
@@ -75,6 +78,7 @@ def ensure_local_structure(settings: Settings | None = None) -> None:
         ("knowledge/glossary.json", '{"version": "1.0", "items": []}'),
         ("knowledge/targets.json", '{"version": "1.0", "items": []}'),
         ("knowledge/relationships.json", '{"version": "1.0", "items": []}'),
+        ("knowledge/metric_registry.json", '{"version": "1.0", "metrics": []}'),
     ):
         path = local / rel
         if not path.exists():

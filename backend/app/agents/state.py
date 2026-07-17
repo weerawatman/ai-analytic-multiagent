@@ -40,6 +40,7 @@ class AgentState(BaseModel):
     theme_id: str = ""
     discovery_context: str = ""
     knowledge_context: str = ""
+    metric_registry_context: str = ""
     sql_reference_context: str = ""
     ceo_feedback_context: str = ""
     team_memory_context: str = ""

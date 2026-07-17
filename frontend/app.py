@@ -11,7 +11,7 @@ from components.backlog_panel import render_backlog_panel
 from components.ceo_briefing_panel import render_ceo_briefing_panel
 from components.team_memory_panel import render_team_memory_panel
 from components.consultant_panel import render_consultant_panel
-from components.chat_box import render_assistant_message
+from components.chat_box import render_answer_rating, render_assistant_message
 from components.knowledge_panel import render_knowledge_panel
 from components.promotion_panel import render_promotion_panel
 from components.status_bar import render_fabric_status, render_mode_selector
@@ -118,8 +118,42 @@ def _elapsed_minutes(started_at: str | None) -> str:
         return ""
 
 
+def _step_elapsed(entry: dict) -> str:
+    started = entry.get("started_at")
+    ended = entry.get("ended_at")
+    if not started:
+        return ""
+    try:
+        t0 = datetime.fromisoformat(started)
+        t1 = datetime.fromisoformat(ended) if ended else datetime.now(timezone.utc)
+        secs = max(0, (t1 - t0).total_seconds())
+        if secs < 60:
+            return f" ({secs:.0f} วิ)"
+        return f" ({secs / 60:.1f} นาที)"
+    except ValueError:
+        return ""
+
+
 def _render_progress(job: dict) -> None:
-    st.markdown(f"**⏳ ทีมกำลังทำงาน**{_elapsed_minutes(job.get('started_at'))}")
+    status = job.get("status")
+    if status == "failed":
+        st.error(f"❌ งานล้มเหลว: {job.get('error') or 'ไม่ทราบสาเหตุ'}")
+        return
+
+    health = job.get("health")
+    age = job.get("heartbeat_age_s")
+    age_txt = f"{age:.0f} วิที่แล้ว" if isinstance(age, (int, float)) else "—"
+    if health == "stalled":
+        st.warning(
+            f"⚠️ ทีมอาจค้างหรือ backend ไม่ตอบ — heartbeat ล่าสุด {age_txt}"
+            f"{_elapsed_minutes(job.get('started_at'))}"
+        )
+    else:
+        st.success(
+            f"✅ ทีมยังทำงานอยู่ (heartbeat {age_txt})"
+            f"{_elapsed_minutes(job.get('started_at'))}"
+        )
+
     done_steps = {p["step"]: p for p in job.get("progress", [])}
     current = job.get("current_step")
     for step, label in STEP_LABELS.items():
@@ -127,9 +161,11 @@ def _render_progress(job: dict) -> None:
             entry = done_steps[step]
             icon = "✅" if entry["status"] == "done" else "⚠️"
             note = f" — {entry['note']}" if entry.get("note") else ""
-            st.markdown(f"{icon} {label}{note}")
+            st.markdown(f"{icon} {label}{_step_elapsed(entry)}{note}")
         elif step == current:
-            st.markdown(f"⏳ {label} ← กำลังทำงาน")
+            entry = done_steps.get(step) or {}
+            note = f" — {entry['note']}" if entry.get("note") else ""
+            st.markdown(f"⏳ {label} ← กำลังทำงาน{_step_elapsed(entry)}{note}")
     st.caption("ปิดแท็บ/refresh ได้ ระบบทำงานต่อเบื้องหลัง — กลับมาดูด้วย thread เดิมได้เสมอ")
 
 
@@ -141,11 +177,13 @@ def poll_active_job() -> None:
     try:
         job = get_job(job_id)
     except Exception as exc:
-        st.warning(f"เช็คสถานะไม่สำเร็จ (จะลองใหม่อัตโนมัติ): {exc}")
+        st.warning(f"⚠️ ติดต่อ backend ไม่ได้ (จะลองใหม่อัตโนมัติ): {exc}")
         return
     if job.get("status") in ("queued", "running"):
         _render_progress(job)
         return
+    if job.get("status") == "failed":
+        _render_progress(job)
     _handle_finished_job(job)
     st.rerun(scope="app")
 
@@ -278,7 +316,7 @@ with col_mode:
         st.markdown("### 🟢 Trusted")
 
 # ──── Chat History ────
-for msg in st.session_state.messages:
+for idx, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         if msg["role"] == "assistant" and msg.get("mode"):
             render_assistant_message(
@@ -287,6 +325,16 @@ for msg in st.session_state.messages:
                 msg["mode"],
                 msg.get("agents_involved"),
             )
+            # Rate only the latest completed assistant answer when idle
+            if (
+                not st.session_state.active_job_id
+                and idx == len(st.session_state.messages) - 1
+            ):
+                render_answer_rating(
+                    session_id=st.session_state.thread_id,
+                    message_index=idx,
+                    job_id=msg.get("job_id"),
+                )
         else:
             st.markdown(msg["content"])
 

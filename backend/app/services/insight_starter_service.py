@@ -101,6 +101,28 @@ def _metric_items(theme_name: str) -> list[dict[str, Any]]:
     return out
 
 
+def _registry_expressions(theme_name: str, valid_columns: set[str]) -> dict[str, str]:
+    """Prefer Phase G2 Metric Registry (approved, non-derived) over glossary."""
+    from backend.app.services.metric_registry import load_registry_sync
+
+    out: dict[str, str] = {}
+    doc = load_registry_sync()
+    for m in doc.get("metrics") or []:
+        if m.get("status") != "approved":
+            continue
+        if m.get("derived") or not m.get("expression"):
+            continue
+        m_theme = m.get("theme")
+        if theme_name and m_theme and m_theme not in (theme_name, "Saphanadb"):
+            continue
+        expr = str(m["expression"])
+        idents = _IDENT_RE.findall(expr)
+        if idents and any(i not in valid_columns for i in idents):
+            continue
+        out[str(m["metric_key"])] = expr
+    return out
+
+
 def _main_fact_profile(discovery: dict[str, Any]) -> dict[str, Any] | None:
     facts = [p for p in discovery.get("profiles", []) if classify_table_role(p) == "fact"]
     if not facts:
@@ -149,18 +171,21 @@ def build_starter_pack(
         table_ref = str(fact.get("table"))
         columns = {str(c.get("COLUMN_NAME", "")) for c in fact.get("columns", [])}
         month_col = _month_column(fact)
-        metrics = _metric_items(theme_name)
-        expressions: dict[str, str] = {}
-        for m in metrics:
+        expressions: dict[str, str] = _registry_expressions(theme_name, columns)
+        # Glossary Fabric-cleaned formulas remain as fallback for keys not in registry
+        for m in _metric_items(theme_name):
+            key = str(m["field_key"])
+            if key in expressions:
+                continue
             expr = parse_cleaned_expression(str(m.get("definition_th", "")), columns)
             if expr:
-                expressions[str(m["field_key"])] = expr
+                expressions[key] = expr
 
         items = _build_items(table_ref, month_col, expressions, source)
         if not items:
             note_th = (
-                "ไม่มี metric ที่ยืนยันสูตร (Fabric cleaned) ที่ตรงกับคอลัมน์จริง — "
-                "เพิ่ม glossary metric ก่อน"
+                "ไม่มี metric ที่ยืนยันสูตร (registry / Fabric cleaned) ที่ตรงกับคอลัมน์จริง — "
+                "seed Metric Registry หรือเพิ่ม glossary metric ก่อน"
             )
 
     executed = None
@@ -175,7 +200,7 @@ def build_starter_pack(
         "note_th": note_th,
         "items": items,
         "method_note_th": (
-            "สร้างจากนิยาม metric ที่ owner ยืนยัน (deterministic) — "
+            "สร้างจาก Metric Registry (approved) + glossary fallback (deterministic) — "
             "รายการที่ evidence_status=not_run เป็นเพียงสมมติฐาน ยังไม่ใช่ข้อค้นพบ"
         ),
     }
