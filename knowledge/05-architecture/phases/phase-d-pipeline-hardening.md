@@ -1,6 +1,6 @@
 # Phase D — อุด Pipeline เดิม (Data Filtering, Row-Size Guard, Retry Loop, PDCA Logging)
 
-> **สถานะ:** implement แล้ว (2026-07-17) — pytest 112 passed; ยังไม่ commit/push; manual Fabric verification (oversized query / ORDER BY) รอตอน capacity กลับมา แล้วให้ owner ตรวจความเรียบร้อยก่อนไป Phase E
+> **สถานะ:** implement แล้ว (2026-07-17) — HIGH + MED/LOW รอบแรกจาก QA commit เป็น `57e5cc9` แล้ว และแก้ residual findings รอบสอง (MED/LOW) ต่อจากนั้น; branch ล้ำหน้า origin/master (ยังไม่ push); manual Fabric verification (oversized query / ORDER BY) รอตอน capacity กลับมา แล้วให้ owner ตรวจความเรียบร้อยก่อนไป Phase E
 > **ผู้ดำเนินการ:** ทำตามลำดับ D1 → D6 (D2/D3 ผูกกันเป็น retry loop เดียว ควรทำคู่กัน), เขียน test ควบคู่ไปกับแต่ละข้อ ไม่ใช่ทำทีหลังทั้งหมด
 > **หลักการใหญ่:** เอกสารนี้คือ "เสาหลักที่ 1 (Data Pipeline & Memory) + เสาหลักที่ 2 (Agent Orchestration & PDCA Error Loop)" จาก 4 เสาหลักที่ owner ต้องการ integrate เข้าระบบ AI Data Team เดิม — เสาหลักที่ 3 (Sandboxed Execution) และ 4 (Model Persistence) อยู่นอกขอบเขตเอกสารนี้ ดู "Phase E" ท้ายเอกสารสำหรับ roadmap ระดับสถาปัตยกรรม (ยังไม่ลงรายละเอียด implementation — ออกแบบละเอียดหลัง Phase D ใช้งานจริงแล้ว เพราะ Phase E พึ่งพา infra ที่ Phase D สร้างโดยตรง)
 
@@ -67,6 +67,8 @@ async def estimate_row_count(sql: str, settings) -> int:
 
 **Cleanup ระหว่างทาง (hygiene, ทำพร้อมกันเพราะแก้ `config.py` อยู่แล้ว):** `compose_http_timeout` เป็น setting ที่ grep แล้วไม่ถูกใช้ที่ไหนเลยในระบบ (dead setting) — ลบทิ้ง
 
+> *Footnote (implementation จริง):* ตัวแปรนี้ถูกใช้ฝั่ง frontend (Streamlit HTTP timeout) ไม่ใช่ dead setting — จึง **เปลี่ยนชื่อเป็น `FRONTEND_HTTP_TIMEOUT`** แทนการลบ โดยยังรับ `COMPOSE_HTTP_TIMEOUT` เป็น fallback เพื่อไม่ให้ `.env` เดิมพัง
+
 ### D5 — PDCA persistent log
 
 ใหม่ `backend/app/services/pdca_logger.py` — reuse pattern เดียวกับ `consultant_service.py`'s `consultant_audit.jsonl` (เขียนผ่าน `asyncio.to_thread` กัน block event loop):
@@ -95,11 +97,11 @@ async def log_sql_failure(theme_id: str, user_prompt: str, sql: str, error: str,
 
 ## Verification
 
-1. `pytest backend/tests -q` ผ่านทั้งหมด (ของเดิมต้องไม่พัง + เทสต์ใหม่ผ่านครบ)
-2. **Manual — oversized query:** ถามคำถามกว้างๆ ที่จะกวาดตารางใหญ่ทั้งตาราง (ไม่ระบุช่วงเวลา/เงื่อนไข) → เห็น COUNT(*) reject ทำงานจริง → DA ปรับ WHERE เองในรอบถัดไป (ไม่เกิน 3 รอบ) → ถ้ายังไม่ผ่านครบ 3 รอบ ต้องเห็นข้อความไทยสุภาพ ไม่ใช่ raw error → เปิด `data/local/logs/pdca_failures.jsonl` เช็คว่ามี entry ครบทุก attempt
-3. **Regression:** คำถามที่เคยพังเพราะ column name ผิด (เคสเดิมที่เคยมี auto-fix) ต้องยัง auto-fix ได้เหมือนเดิมภายใต้ retry counter ใหม่ ไม่ถอยหลัง
-4. **Timeout:** จำลอง LLM หรือ Fabric ช้าผิดปกติ (mock delay) → ยืนยัน job ไม่ค้างเกิน `chat_job_max_seconds` และ status ออกมาเป็น `failed` พร้อมข้อความชัดเจน
-5. **`ORDER BY` edge case:** ถามคำถามที่ทำให้ DA สร้าง SQL แบบ "TOP N เรียงตาม..." (มี `ORDER BY`) → ยืนยัน COUNT(*) guard ไม่ error/ไม่ fail-open โดยไม่จำเป็น
+1. ✅ **ผ่านแล้ว (offline/pytest):** `pytest backend/tests -q` ผ่านทั้งหมด — ล่าสุด 139 passed (baseline 131 + เทสต์ residual round 2) รวม mock timeout test (ข้อ 4 แบบ mock) และ `ORDER BY` unit tests (ข้อ 5 แบบ unit) แล้ว
+2. ⏳ **รอ Fabric capacity — Manual oversized query:** ถามคำถามกว้างๆ ที่จะกวาดตารางใหญ่ทั้งตาราง (ไม่ระบุช่วงเวลา/เงื่อนไข) → เห็น COUNT(*) reject ทำงานจริง → DA ปรับ WHERE เองในรอบถัดไป (ไม่เกิน 3 รอบ) → ถ้ายังไม่ผ่านครบ 3 รอบ ต้องเห็นข้อความไทยสุภาพ ไม่ใช่ raw error → เปิด `data/local/logs/pdca_failures.jsonl` เช็คว่ามี entry ครบทุก attempt
+3. ⏳ **รอ Fabric capacity — Regression (live retry):** คำถามที่เคยพังเพราะ column name ผิด (เคสเดิมที่เคยมี auto-fix) ต้องยัง auto-fix ได้เหมือนเดิมภายใต้ retry counter ใหม่ ไม่ถอยหลัง
+4. ⏳ **รอ Fabric capacity — Timeout (ของจริง):** จำลอง LLM หรือ Fabric ช้าผิดปกติ → ยืนยัน job ไม่ค้างเกิน `chat_job_max_seconds` และ status ออกมาเป็น `failed` พร้อมข้อความชัดเจน (ฝั่ง mock ผ่านแล้วใน pytest)
+5. ⏳ **รอ Fabric capacity — `ORDER BY` edge case (live PDCA):** ถามคำถามที่ทำให้ DA สร้าง SQL แบบ "TOP N เรียงตาม..." (มี `ORDER BY`) → ยืนยัน COUNT(*) guard ไม่ error/ไม่ fail-open โดยไม่จำเป็น (ฝั่ง unit test ผ่านแล้ว)
 
 ---
 

@@ -66,8 +66,13 @@ async def data_engineer_node(state: AgentState) -> dict:
         try:
             db_schema = await get_fabric_schema_text_async()
         except Exception as e:
+            # db_schema flows into schema_info → quality de_context_th; keep
+            # only the exception type here — full detail goes to the log.
             logger.warning("DE live schema fetch failed: %s", e)
-            db_schema = f"(Fabric schema ไม่พร้อม: {e} — ใช้ discovery บนดิสก์ถ้ามี)"
+            db_schema = (
+                f"(Fabric schema ไม่พร้อมชั่วคราว ({type(e).__name__}) "
+                "— ใช้ discovery บนดิสก์ถ้ามี)"
+            )
     skill = load_agent_skill("data_engineer")
     knowledge_ctx = state.knowledge_context or "(none)"
     sql_ref_ctx = state.sql_reference_context or "(none)"

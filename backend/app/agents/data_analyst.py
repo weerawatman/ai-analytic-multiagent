@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -16,14 +17,25 @@ from backend.app.services.fabric_sql import (
     run_fabric_sql_async,
 )
 from backend.app.services.pdca_logger import log_sql_failure
+
+# Single shared CEO-facing failure message (quality_assembly is the canonical
+# home); the old local name is kept as an alias for existing imports/tests.
+from backend.app.services.quality_assembly import (
+    SQL_FAILED_CEO_MSG_TH as SQL_FAILED_SUMMARY_TH,
+)
 from backend.app.services.semantic_store import read_trusted_layer
 
 MAX_SQL_ATTEMPTS = 3
 
-SQL_FAILED_SUMMARY_TH = (
-    "ทีม Data Analyst ลองปรับ SQL แล้ว 3 ครั้งแต่ยังไม่สำเร็จ "
-    "กรุณาปรับคำถามให้เจาะจงขึ้น เช่น ระบุช่วงเวลา หรือหน่วยงานที่สนใจ"
-)
+# Failed-attempt marker lines carry friendly-error text from earlier attempts;
+# once an attempt succeeds they must be stripped so trusted summarize never
+# concatenates them into final_answer (Phase D residual, DA finding).
+_SQL_ATTEMPT_FAILED_LINE_RE = re.compile(r"^SQL_ATTEMPT_FAILED:.*(?:\n|$)", re.MULTILINE)
+
+
+def strip_failed_attempt_lines(text: str) -> str:
+    cleaned = _SQL_ATTEMPT_FAILED_LINE_RE.sub("", text or "")
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
 def _filter_trusted_metrics(trusted: dict, theme: str | None) -> list[dict]:
@@ -196,7 +208,8 @@ Fix the SQL. Return corrected SQL only in a ```sql block."""
     await enforce_row_count_threshold_async(fixed)
     result = await run_fabric_sql_async(fixed, mode=mode, max_rows=10)
     return (
-        content + f"\n\nSQL_RETRY:\n{fixed}\n\nQUERY_RESULT:\n{result.get('rows', [])}",
+        strip_failed_attempt_lines(content)
+        + f"\n\nSQL_RETRY:\n{fixed}\n\nQUERY_RESULT:\n{result.get('rows', [])}",
         fixed,
     )
 

@@ -5,6 +5,8 @@ from backend.app.agents.state import AgentState
 from backend.app.core.config import get_settings
 from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
+from backend.app.services.error_sanitizer import sanitize_step_errors
+from backend.app.services.quality_assembly import SQL_FAILED_CEO_MSG_TH
 
 settings = get_settings()
 
@@ -52,12 +54,6 @@ KPI_ALIGNMENT:
 RECOMMENDATION:
 """
 
-SQL_FAILED_CEO_MSG_TH = (
-    "ทีม Data Analyst ลองปรับ SQL แล้ว 3 ครั้งแต่ยังไม่สำเร็จ "
-    "กรุณาปรับคำถามให้เจาะจงขึ้น เช่น ระบุช่วงเวลา หรือหน่วยงานที่สนใจ"
-)
-
-
 async def business_analyst_node(state: AgentState) -> dict:
     logger.info("Business Analyst agent invoked thread=%s", state.thread_id)
 
@@ -70,7 +66,9 @@ async def business_analyst_node(state: AgentState) -> dict:
             f"Tell the CEO: {SQL_FAILED_CEO_MSG_TH}"
         )
     elif state.step_errors:
-        sql_status = "warnings: " + "; ".join(state.step_errors[:5])
+        # step_errors carry raw exception detail — sanitize before it enters
+        # the prompt so the LLM cannot echo ODBC text into the CEO narrative.
+        sql_status = "warnings: " + "; ".join(sanitize_step_errors(state.step_errors[:5]))
 
     # When SQL fully failed, skip LLM and return a deterministic polite message
     # so raw SQL_ERROR strings never reach the CEO narrative.

@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Wall-clock cap for the chat graph (incl. SQL retries); the consultant
     # review step is bounded separately by consultant_timeout in job_runner.
     chat_job_max_seconds: int = 1200
+    # Wall-clock cap for the whole onboarding job (DE→DA→DS→BA + coach) —
+    # generous because each Ollama role call may take up to ollama_timeout.
+    onboarding_job_max_seconds: int = 3600
 
     # Local storage
     data_local_dir: str = "data/local"

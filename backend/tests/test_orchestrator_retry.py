@@ -281,6 +281,62 @@ async def test_data_analyst_retry_success_clears_sql_error(temp_storage, monkeyp
 
 
 @pytest.mark.anyio
+async def test_trusted_retry_success_strips_prior_attempt_text(temp_storage, monkeypatch):
+    """Trusted mode, retry succeeds on attempt 2 — final_answer must carry no
+    SQL_ATTEMPT_FAILED marker nor exception-type text from the failed attempt."""
+    from backend.app.agents import data_analyst
+
+    monkeypatch.setattr(data_analyst, "fabric_can_query", lambda: True)
+
+    class FixItLLM:
+        async def ainvoke(self, messages):
+            return SimpleNamespace(content="```sql\nSELECT NETWR FROM VBRK\n```")
+
+    monkeypatch.setattr(data_analyst, "llm", FixItLLM())
+    monkeypatch.setattr(
+        data_analyst,
+        "read_trusted_layer",
+        AsyncMock(return_value={"metrics": [{"metric_key": "total_sales", "theme": ""}]}),
+    )
+    monkeypatch.setattr(
+        data_analyst, "enforce_row_count_threshold_async", AsyncMock(return_value=10)
+    )
+    monkeypatch.setattr(
+        data_analyst,
+        "run_fabric_sql_async",
+        AsyncMock(return_value={"rows": [{"NETWR": 100}], "columns": ["NETWR"]}),
+    )
+
+    state = AgentState(
+        thread_id="t-trusted-retry-ok",
+        mode="trusted",
+        use_collaborative_flow=False,
+        discovery_context="## VBRK\n  - NETWR",
+        generated_sql="SELECT BADCOL FROM VBRK",
+        query_result=(
+            "ANALYSIS: Trusted ยอดขาย\n\n"
+            "SQL_ATTEMPT_FAILED: รัน SQL ไม่สำเร็จ (ProgrammingError: ('42000', "
+            "'[42000] [Microsoft][ODBC Driver 18 for SQL Server]...'))"
+        ),
+        sql_error="Invalid column name 'BADCOL'. (42S22)",
+        sql_retry_count=1,
+        messages=[HumanMessage(content="ยอดขายเดือนนี้")],
+    )
+    result = await data_analyst_node(state)
+    assert result["sql_error"] == ""
+    assert result["sql_failed"] is False
+
+    merged = AgentState(**{**state.model_dump(), **result})
+    assert after_analyst(merged) == "summarize"
+    out = await summarize_node(merged)
+    final = out["final_answer"]
+    assert "QUERY_RESULT" in final  # successful result present
+    assert "ANALYSIS: Trusted ยอดขาย" in final  # analytic portion preserved
+    for banned in ("SQL_ATTEMPT_FAILED", "ProgrammingError", "ODBC", "42000", "Traceback"):
+        assert banned not in final
+
+
+@pytest.mark.anyio
 async def test_explore_critique_skips_llm_when_sql_failed(temp_storage, monkeypatch):
     """DS critique on failed SQL must be deterministic — no LLM echo of errors."""
     from backend.app.agents import data_scientist

@@ -152,7 +152,9 @@ async def test_failing_graph_marks_job_failed(client: AsyncClient, temp_storage,
     assert response.status_code == 202
     job = await _poll_until_done(client, response.json()["job_id"])
     assert job["status"] == "failed"
-    assert "Ollama down" in job["error"]
+    # User-facing error keeps the exception type only; detail stays in the log.
+    assert "RuntimeError" in job["error"]
+    assert "Ollama down" not in job["error"]
 
 
 async def test_job_endpoints_not_found(client: AsyncClient, temp_storage):
@@ -280,6 +282,104 @@ def test_persist_new_messages_sanitizes_da_failed_attempts(temp_storage):
     # Non-DA messages pass through untouched.
     ba_persisted = [m["content"] for m in messages if m["agent"] == "business_analyst"]
     assert ba_persisted == ["BA: สรุปเชิงธุรกิจ"]
+
+
+def test_record_step_sanitizes_progress_note(temp_storage):
+    """Step notes are rendered in the progress UI — no ODBC/exception detail."""
+    job_store.init_jobs_db()
+    job = job_store.create_job("chat", "t-note")
+    job_store.append_step(job["id"], "data_analyst")
+    job_runner._record_step(
+        job["id"],
+        "data_analyst",
+        {
+            "step_errors": [
+                "data_analyst SQL: รัน SQL ไม่สำเร็จ (ProgrammingError: ('42000', "
+                "'[42000] [Microsoft][ODBC Driver 18 for SQL Server]...'))"
+            ]
+        },
+        "explore",
+    )
+    entry = [p for p in job_store.get_job(job["id"])["progress"] if p["step"] == "data_analyst"][-1]
+    assert entry["status"] == "failed"
+    note = entry["note"]
+    assert "data_analyst SQL" in note
+    assert "ProgrammingError" in note  # exception type stays for context
+    for banned in ("ODBC", "42000", "Microsoft", "Traceback"):
+        assert banned not in note
+
+
+def test_record_step_keeps_clean_thai_note(temp_storage):
+    """Already-friendly Thai errors (e.g. row-count guidance) pass through."""
+    job_store.init_jobs_db()
+    job = job_store.create_job("chat", "t-note-th")
+    job_store.append_step(job["id"], "data_analyst")
+    friendly = "data_analyst SQL: จำนวนแถวโดยประมาณ 99,999 เกินเกณฑ์ 50,000 — กรุณาจำกัดด้วย WHERE"
+    job_runner._record_step(job["id"], "data_analyst", {"step_errors": [friendly]}, "explore")
+    entry = [p for p in job_store.get_job(job["id"])["progress"] if p["step"] == "data_analyst"][-1]
+    assert entry["note"] == friendly
+
+
+async def _poll_store_until_done(job_id: str, timeout: float = 10.0) -> dict:
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        job = job_store.get_job(job_id)
+        assert job is not None
+        if job["status"] not in ("queued", "running"):
+            return job
+        assert asyncio.get_event_loop().time() < deadline, "job never finished"
+        await asyncio.sleep(0.02)
+
+
+async def test_onboarding_job_wall_clock_timeout(temp_storage, monkeypatch):
+    """Mirrors test_chat_job_wall_clock_timeout for the onboarding job."""
+    job_store.init_jobs_db()
+    monkeypatch.setenv("ONBOARDING_JOB_MAX_SECONDS", "1")
+    from backend.app.core.config import get_settings
+
+    get_settings.cache_clear()
+
+    async def hung_onboarding(theme_id, theme_name=""):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(job_runner, "run_onboarding", hung_onboarding)
+
+    job = job_runner.start_onboarding_job("theme-slow", "ยอดขาย")
+    job = await _poll_store_until_done(job["id"])
+    assert job["status"] == "failed"
+    assert "เกินกำหนด" in job["error"]
+    assert "wall-clock" in job["error"].lower()
+    steps = [p for p in job["progress"] if p["step"] == "onboarding"]
+    assert steps and steps[-1]["status"] == "failed"
+    assert job["current_step"] is None
+    get_settings.cache_clear()
+
+
+async def test_consult_job_wall_clock_timeout(temp_storage, monkeypatch):
+    """A hung Claude call must not stall the consult job past its bound
+    (consultant_timeout + 30) — mirrors the consultant review step behavior."""
+    job_store.init_jobs_db()
+    monkeypatch.setenv("CONSULTANT_TIMEOUT", "-29")  # bound = -29 + 30 = 1s
+    from backend.app.core.config import get_settings
+
+    get_settings.cache_clear()
+
+    async def hung_answer(theme_id, question):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(
+        "backend.app.services.consultant_service.answer_question", hung_answer
+    )
+
+    job = job_runner.start_consult_job("theme-consult-slow", "ช่วยดูทีมหน่อย")
+    job = await _poll_store_until_done(job["id"])
+    assert job["status"] == "failed"
+    assert "เกินกำหนด" in job["error"]
+    assert "wall-clock" in job["error"].lower()
+    steps = [p for p in job["progress"] if p["step"] == "consult"]
+    assert steps and steps[-1]["status"] == "failed"
+    assert job["current_step"] is None
+    get_settings.cache_clear()
 
 
 async def test_chat_job_graceful_sql_failed_result(client: AsyncClient, temp_storage, monkeypatch):

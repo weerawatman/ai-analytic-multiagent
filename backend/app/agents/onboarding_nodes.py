@@ -43,8 +43,13 @@ async def _invoke_role(
         )
         return str(response.content).strip()
     except Exception as exc:
-        logger.error("Onboarding %s failed: %s", role, exc)
-        return f"[Onboarding error for {role}] {exc}"
+        # This string is written into team memory — keep only the exception
+        # type; the full detail stays in the log.
+        logger.exception("Onboarding %s failed: %s", role, exc)
+        return (
+            f"[Onboarding {role} ไม่สำเร็จ] ระบบขัดข้องชั่วคราว ({type(exc).__name__}) "
+            "— รัน onboarding ใหม่อีกครั้งเพื่อให้ได้ handoff ครบ"
+        )
 
 
 def _base_context(state: dict[str, Any]) -> str:

@@ -7,8 +7,12 @@ from backend.app.core.logger import logger
 
 llm = make_chat_ollama(temperature=0.2)
 
+# No "CRITIQUE:" machine prefix — this text is shown to the CEO as-is (chat
+# history + quality payload). quality_assembly's section parse falls back to
+# the full analysis_summary when the CRITIQUE: tag is absent, so nothing
+# downstream depends on the prefix.
 SQL_FAILED_CRITIQUE_TH = (
-    "CRITIQUE: ยังไม่สามารถ critique เชิงวิเคราะห์ได้ เนื่องจาก SQL รันไม่สำเร็จหลังลองปรับครบ 3 ครั้ง "
+    "ยังไม่สามารถวิเคราะห์เชิงลึกได้ เนื่องจาก SQL รันไม่สำเร็จหลังลองปรับครบ 3 ครั้ง "
     "— แนะนำให้ปรับคำถามให้เจาะจงขึ้น (ระบุช่วงเวลา/หน่วยงาน) แล้วถามใหม่"
 )
 

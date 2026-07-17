@@ -21,6 +21,7 @@ from backend.app.core.logger import logger
 from backend.app.schemas.chat import ChatRequest, ChatResponse
 from backend.app.services import chat_store, consultant_service, job_store
 from backend.app.services.chat_lock import thread_lock
+from backend.app.services.error_sanitizer import sanitize_step_errors
 from backend.app.services.onboarding_service import run_onboarding
 
 # Strong references so pending tasks are never garbage-collected.
@@ -63,6 +64,51 @@ class JobConflictError(RuntimeError):
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _fail_job_on_timeout(job_id: str, max_seconds: int) -> None:
+    """Mark a job failed after its wall-clock budget with a polite Thai error."""
+    msg = (
+        f"งานใช้เวลาเกินกำหนด {max_seconds} วินาที ระบบจึงหยุดงานเพื่อไม่ให้ค้าง "
+        "— กรุณาลองใหม่ หรือปรับคำถามให้แคบลง (wall-clock timeout)"
+    )
+    job = job_store.get_job(job_id)
+    if job and job.get("current_step"):
+        job_store.finish_step(job_id, job["current_step"], "failed", msg)
+    job_store.update_job(
+        job_id,
+        status="failed",
+        error=msg,
+        current_step=None,
+        finished_at=_utc_now(),
+    )
+
+
+def _fail_job_on_error(job_id: str, e: BaseException) -> None:
+    """Mark a job failed keeping only the exception type user-facing.
+
+    Full detail is already in backend.log via logger.exception at the caller;
+    the job error/note surfaces directly in chat and the progress UI.
+    """
+    friendly = (
+        f"เกิดข้อผิดพลาดระหว่างทำงาน ({type(e).__name__}) "
+        "— รายละเอียดอยู่ใน data/local/logs/backend.log"
+    )
+    job = job_store.get_job(job_id)
+    if job and job.get("current_step"):
+        job_store.finish_step(
+            job_id,
+            job["current_step"],
+            "failed",
+            f"ขั้นตอนนี้ทำงานไม่สำเร็จ ({type(e).__name__})",
+        )
+    job_store.update_job(
+        job_id,
+        status="failed",
+        error=friendly,
+        current_step=None,
+        finished_at=_utc_now(),
+    )
 
 
 def _track(job_id: str, task: asyncio.Task) -> None:
@@ -108,7 +154,12 @@ def _next_step(node: str, update: dict[str, Any], mode: str) -> str | None:
 def _record_step(job_id: str, node: str, update: dict[str, Any], mode: str) -> None:
     errors = update.get("step_errors") or []
     status = "failed" if errors else "done"
-    note = "; ".join(str(e) for e in errors) if errors else None
+    note = None
+    if errors:
+        # Full detail stays in the log + step_errors state; the persisted note
+        # is rendered directly in the progress UI, so keep it polite/clean.
+        logger.warning("Job %s step %s errors: %s", job_id, node, errors)
+        note = "; ".join(sanitize_step_errors(errors))
     job_store.finish_step(job_id, node, status, note)
     job_store.update_job(job_id, current_step=_next_step(node, update, mode))
 
@@ -285,21 +336,8 @@ async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
                     timeout=max_seconds,
                 )
             except asyncio.TimeoutError:
-                msg = (
-                    f"Chat job exceeded wall-clock limit "
-                    f"({max_seconds}s) — งานถูกหยุดเพื่อไม่ให้ค้าง"
-                )
                 logger.error("Chat job %s timed out after %ss", job_id, max_seconds)
-                job = job_store.get_job(job_id)
-                if job and job.get("current_step"):
-                    job_store.finish_step(job_id, job["current_step"], "failed", msg)
-                job_store.update_job(
-                    job_id,
-                    status="failed",
-                    error=msg,
-                    current_step=None,
-                    finished_at=_utc_now(),
-                )
+                _fail_job_on_timeout(job_id, max_seconds)
                 return
 
             consultant_note = None
@@ -364,16 +402,7 @@ async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
         raise
     except Exception as e:
         logger.exception("Chat job %s failed", job_id)
-        job = job_store.get_job(job_id)
-        if job and job.get("current_step"):
-            job_store.finish_step(job_id, job["current_step"], "failed", str(e))
-        job_store.update_job(
-            job_id,
-            status="failed",
-            error=f"{type(e).__name__}: {e}",
-            current_step=None,
-            finished_at=_utc_now(),
-        )
+        _fail_job_on_error(job_id, e)
 
 
 def start_onboarding_job(theme_id: str, theme_name: str = "") -> dict[str, Any]:
@@ -391,24 +420,45 @@ def start_onboarding_job(theme_id: str, theme_name: str = "") -> dict[str, Any]:
     return job
 
 
+async def _run_onboarding_work(job_id: str, theme_id: str, theme_name: str) -> dict[str, Any]:
+    job_store.append_step(job_id, "onboarding")
+    result = await run_onboarding(theme_id, theme_name)
+    job_store.finish_step(job_id, "onboarding", "done")
+
+    if consultant_service.is_enabled("coach_onboarding"):
+        job_store.append_step(job_id, "consultant_coach")
+        coach = await consultant_service.coach_team(theme_id, theme_name)
+        job_store.finish_step(
+            job_id,
+            "consultant_coach",
+            "done" if coach else "failed",
+            None if coach else "consultant unavailable — skipped",
+        )
+        if coach:
+            result["consultant_coach"] = coach
+    return result
+
+
 async def _run_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> None:
     try:
         job_store.update_job(job_id, status="running", started_at=_utc_now())
-        job_store.append_step(job_id, "onboarding")
-        result = await run_onboarding(theme_id, theme_name)
-        job_store.finish_step(job_id, "onboarding", "done")
-
-        if consultant_service.is_enabled("coach_onboarding"):
-            job_store.append_step(job_id, "consultant_coach")
-            coach = await consultant_service.coach_team(theme_id, theme_name)
-            job_store.finish_step(
-                job_id,
-                "consultant_coach",
-                "done" if coach else "failed",
-                None if coach else "consultant unavailable — skipped",
+        # Wall-clock cap for the whole job (multiple Ollama roles + coach) —
+        # per-call HTTP timeouts alone cannot bound the total (Phase D review).
+        max_seconds = get_settings().onboarding_job_max_seconds
+        try:
+            result = await asyncio.wait_for(
+                _run_onboarding_work(job_id, theme_id, theme_name),
+                timeout=max_seconds,
             )
-            if coach:
-                result["consultant_coach"] = coach
+        except asyncio.TimeoutError:
+            logger.error(
+                "Onboarding job %s timed out after %ss theme=%s",
+                job_id,
+                max_seconds,
+                theme_id,
+            )
+            _fail_job_on_timeout(job_id, max_seconds)
+            return
 
         job_store.update_job(
             job_id,
@@ -429,14 +479,7 @@ async def _run_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> No
         raise
     except Exception as e:
         logger.exception("Onboarding job %s failed theme=%s", job_id, theme_id)
-        job_store.finish_step(job_id, "onboarding", "failed", str(e))
-        job_store.update_job(
-            job_id,
-            status="failed",
-            error=f"{type(e).__name__}: {e}",
-            current_step=None,
-            finished_at=_utc_now(),
-        )
+        _fail_job_on_error(job_id, e)
 
 
 def start_consult_job(theme_id: str, question: str) -> dict[str, Any]:
@@ -458,7 +501,20 @@ async def _run_consult_job(job_id: str, theme_id: str, question: str) -> None:
     try:
         job_store.update_job(job_id, status="running", started_at=_utc_now())
         job_store.append_step(job_id, "consult")
-        advice = await consultant_service.answer_question(theme_id, question)
+        # Same bound as the consultant review step in _run_chat_job — a hung
+        # Claude call must not stall the job past its own HTTP timeout.
+        max_seconds = get_settings().consultant_timeout + 30
+        try:
+            advice = await asyncio.wait_for(
+                consultant_service.answer_question(theme_id, question),
+                timeout=max_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "Consult job %s timed out after %ss theme=%s", job_id, max_seconds, theme_id
+            )
+            _fail_job_on_timeout(job_id, max_seconds)
+            return
         if advice is None:
             job_store.finish_step(job_id, "consult", "failed", "Consultant unavailable")
             job_store.update_job(
@@ -490,11 +546,4 @@ async def _run_consult_job(job_id: str, theme_id: str, question: str) -> None:
         raise
     except Exception as e:
         logger.exception("Consult job %s failed theme=%s", job_id, theme_id)
-        job_store.finish_step(job_id, "consult", "failed", str(e))
-        job_store.update_job(
-            job_id,
-            status="failed",
-            error=f"{type(e).__name__}: {e}",
-            current_step=None,
-            finished_at=_utc_now(),
-        )
+        _fail_job_on_error(job_id, e)

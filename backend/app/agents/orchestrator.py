@@ -4,7 +4,11 @@ from langgraph.graph import END, StateGraph
 
 from backend.app.agents.business_analyst import business_analyst_node
 from backend.app.agents.context_nodes import de_context_node, prepare_context_node
-from backend.app.agents.data_analyst import MAX_SQL_ATTEMPTS, data_analyst_node
+from backend.app.agents.data_analyst import (
+    MAX_SQL_ATTEMPTS,
+    data_analyst_node,
+    strip_failed_attempt_lines,
+)
 from backend.app.agents.data_engineer import data_engineer_node
 from backend.app.agents.data_scientist import data_scientist_node, explore_critique_node
 from backend.app.agents.quality_node import quality_assembly_node
@@ -135,7 +139,9 @@ async def summarize_node(state: AgentState) -> dict:
     if state.schema_info:
         parts.append(f"[Data Engineer]\n{state.schema_info}")
     if state.query_result:
-        parts.append(f"[Data Analyst]\n{state.query_result}")
+        # Success-after-retry (or offline mid-retry) may still carry earlier
+        # SQL_ATTEMPT_FAILED marker lines — never compose them into the answer.
+        parts.append(f"[Data Analyst]\n{strip_failed_attempt_lines(state.query_result)}")
     if state.analysis_summary:
         parts.append(f"[Data Scientist]\n{state.analysis_summary}")
     if state.ba_summary:

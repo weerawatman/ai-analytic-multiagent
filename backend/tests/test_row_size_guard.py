@@ -48,6 +48,27 @@ def test_strip_ignores_order_by_inside_string_literal():
     assert strip_trailing_order_by(sql) == sql
 
 
+def test_strip_ignores_order_by_inside_double_quoted_identifier():
+    """T-SQL QUOTED_IDENTIFIER — "ORDER BY" inside quotes is a name, not a clause."""
+    sql = 'SELECT a AS "ORDER BY alias" FROM t'
+    assert strip_trailing_order_by(sql) == sql
+
+
+def test_strip_double_quoted_identifier_with_parens_and_escapes():
+    """Parens + doubled "" escapes inside quoted identifiers must not skew depth."""
+    sql = 'SELECT "col (x"" y)" FROM t ORDER BY "col (x"" y)" DESC'
+    assert strip_trailing_order_by(sql) == 'SELECT "col (x"" y)" FROM t'
+
+
+def test_build_count_guard_sql_double_quoted_order_by_balanced():
+    sql = 'SELECT "ORDER BY (weird)" FROM t ORDER BY 1'
+    wrapped = build_count_guard_sql(sql)
+    assert wrapped.upper().startswith("SELECT COUNT(*)")
+    assert '"ORDER BY (weird)"' in wrapped  # quoted identifier untouched
+    inner = wrapped[wrapped.index("(") + 1 : wrapped.rindex(")")]
+    assert not inner.rstrip().upper().endswith("ORDER BY 1")
+
+
 def test_build_count_guard_sql_nested_order_by_balanced():
     sql = "SELECT * FROM (SELECT TOP 5 a FROM t ORDER BY a) x"
     wrapped = build_count_guard_sql(sql)

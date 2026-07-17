@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from backend.app.core.config import get_settings
+from backend.app.services.error_sanitizer import sanitize_step_errors
 
 _ROW_BLOCK_RE = re.compile(
     r"^(QUERY_RESULT|SQL_RESULT|SQL_RETRY):\s*\n?\[[\s\S]*?\]\s*$",
@@ -94,7 +95,9 @@ def build_consultant_sections(
         "quality_gaps": ", ".join(qp.get("quality_gaps") or [])
         if isinstance(qp.get("quality_gaps"), list)
         else str(qp.get("quality_gaps") or ""),
-        "step_errors": "; ".join(step_errors or []),
+        # Sanitized (exception type + short Thai note) so Claude can never
+        # echo ODBC/exception detail back into a CEO-visible reply.
+        "step_errors": "; ".join(sanitize_step_errors(step_errors)),
     }
 
     if include_troubleshooting:

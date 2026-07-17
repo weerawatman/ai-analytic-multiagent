@@ -45,6 +45,14 @@ Local **AI Data Team** (LangGraph multi-agent) for **Microsoft Fabric Data Wareh
 
    **Important:** `FABRIC_SERVER` + `FABRIC_DATABASE` must come from the **same** Warehouse connection string. The display name in Fabric UI (e.g. WH_Silver) may differ from warehouses on other workspaces.
 
+   Optional tuning (defaults in `.env.example` are fine):
+
+   | Variable | Purpose |
+   |----------|---------|
+   | `CHAT_JOB_MAX_SECONDS` | Wall-clock cap for the chat agent graph (pipeline + SQL retries), default 1200s. The consultant review step is bounded separately by `CONSULTANT_TIMEOUT` + 30s. |
+   | `ONBOARDING_JOB_MAX_SECONDS` | Wall-clock cap for a whole onboarding job (DE→DA→DS→BA + coach), default 3600s. |
+   | `FRONTEND_HTTP_TIMEOUT` | Streamlit → backend HTTP timeout in seconds (default 600). Renamed from `COMPOSE_HTTP_TIMEOUT`; the old name is still honored as a fallback. |
+
 3. **Grant SP access in Fabric**
    - Workspace → **Manage access** → add your Service Principal (e.g. Viewer or higher)
    - Ensure the SP can read the target Warehouse

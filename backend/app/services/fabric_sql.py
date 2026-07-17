@@ -66,8 +66,9 @@ def _skip_leading_ws_comments(sql: str) -> int:
 def _depth0_match_positions(sql: str, pattern: re.Pattern[str], start: int = 0) -> list[int]:
     """Start indices where `pattern` matches at paren depth 0.
 
-    Skips string literals ('...'), bracket identifiers ([...]) and comments so
-    parentheses inside them never affect the depth count.
+    Skips string literals ('...'), quoted identifiers ("..." — T-SQL
+    QUOTED_IDENTIFIER, "" doubles as escape), bracket identifiers ([...]) and
+    comments so parentheses/keywords inside them never affect the scan.
     """
     positions: list[int] = []
     depth = 0
@@ -75,11 +76,12 @@ def _depth0_match_positions(sql: str, pattern: re.Pattern[str], start: int = 0) 
     n = len(sql)
     while i < n:
         ch = sql[i]
-        if ch == "'":
+        if ch == "'" or ch == '"':
+            quote = ch
             i += 1
             while i < n:
-                if sql[i] == "'":
-                    if i + 1 < n and sql[i + 1] == "'":  # '' escape inside literal
+                if sql[i] == quote:
+                    if i + 1 < n and sql[i + 1] == quote:  # doubled-quote escape
                         i += 2
                         continue
                     break
