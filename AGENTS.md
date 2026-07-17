@@ -11,7 +11,7 @@ Project:     AI Analytics Multi-Agent (Fabric Insight Explorer)
 Description: Local AI Data Team for deep insight exploration on Microsoft Fabric DW, with Explore/Trusted knowledge loop
 Status:      build
 Created:     2026-07-15
-Updated:     2026-07-15
+Updated:     2026-07-18
 Owner:       Data Engineer (solo Phase 1)
 ```
 
@@ -44,6 +44,8 @@ Owner:       Data Engineer (solo Phase 1)
 | Architecture | System design | `knowledge/05-architecture/architecture/Architecture.md` |
 | Architecture | Tech stack | `knowledge/05-architecture/tech-stack.md` |
 | Architecture | Phase 1 plan | `knowledge/05-architecture/phases/phase-1.md` |
+| Architecture | **Roadmap G→K (self-learning analytics)** | `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` |
+| Architecture | Phase gates (audit trail) | `knowledge/05-architecture/phases/gates/` |
 | Architecture | ADRs | `knowledge/05-architecture/adr/` |
 
 ---
@@ -51,7 +53,7 @@ Owner:       Data Engineer (solo Phase 1)
 ## Phase 1 Summary (Locked Decisions)
 
 - **Users:** Solo Data Engineer (BA/DA later)
-- **Data source:** Microsoft Fabric DW (`WH_SAP_PRD`) only — no PostgreSQL for analytics
+- **Data source:** Microsoft Fabric DW primary; since Phase F a PostgreSQL WH_Silver mirror is a **labeled auto-fallback** (never silent — provenance on every result; see `phases/phase-f-postgres-fallback.md`)
 - **Auth to DW:** Service Principal, SELECT-only + SQL allowlist guard
 - **Modes:** `Explore` (draft) and `Trusted` (validated definitions)
 - **Quality bar:** Heavy validation (SQL, assumptions, sanity checks, sample rows)
@@ -60,6 +62,17 @@ Owner:       Data Engineer (solo Phase 1)
 - **LLM:** Local Ollama ~14B default, switchable to ~32B
 - **Language:** Thai for UI/reports; English for SQL/technical metadata
 - **Phase 1 done when:** One theme completes full loop + at least one Trusted playbook
+
+---
+
+## Phase G–K Delegation Rules (binding for any AI implementing the roadmap)
+
+Before implementing **any** part of phases G–K (self-learning analytics), you MUST:
+
+1. Read `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` **§4 Delegation Guardrails** in full, and follow its Handoff Protocol (§4.4): create a phase doc from `phases/_TEMPLATE-phase.md` before writing any code.
+2. Treat `backend/tests/test_roadmap_conformance.py` as a **binding contract** — it enforces the roadmap invariants automatically (skipped until each module exists, then enforced forever). Never weaken, skip, or delete these tests to make a build pass.
+3. Any deviation from locked decisions or canonical names requires **owner approval first**, recorded in the phase doc's Deviation Log — never "do first, report later".
+4. A phase is only "done" when its gate artifact exists in `phases/gates/` with real evidence (see `gates/README.md`).
 
 ---
 
