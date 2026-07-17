@@ -99,7 +99,8 @@ async def data_engineer_node(state: AgentState) -> dict:
         content: str = response.content  # type: ignore[assignment]
     except Exception as e:
         logger.exception("Data Engineer LLM call failed")
-        content = f"Data Engineer error: {e}"
+        # User-visible content stays polite/short; detail goes to log + step_errors.
+        content = f"Data Engineer ไม่พร้อมชั่วคราว ({type(e).__name__}) — ลองใหม่อีกครั้ง"
         step_errors.append(f"data_engineer: {e}")
 
     if fabric_can_query() and "SQL:" in content:
@@ -113,7 +114,12 @@ async def data_engineer_node(state: AgentState) -> dict:
                 content += f"\n\nSQL_RESULT:\n{result.get('rows', [])}"
             except Exception as e:
                 logger.exception("Data Engineer inspection SQL failed")
-                content += f"\n\nSQL_ERROR: {e}"
+                # Never append raw exception text (`SQL_ERROR: {e}`) — it can
+                # flow into the CEO-facing summary (Phase D review, D3).
+                content += (
+                    f"\n\nSQL_SKIPPED: รัน SQL ตรวจสอบไม่สำเร็จ ({type(e).__name__}) "
+                    "— ใช้ schema/discovery ที่มีแทน"
+                )
                 step_errors.append(f"data_engineer SQL: {e}")
     elif "SQL:" in content:
         content += f"\n\nSQL_SKIPPED: {OFFLINE_SQL_MSG_TH}"

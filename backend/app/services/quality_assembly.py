@@ -9,6 +9,8 @@ from backend.app.agents.state import AgentState
 from backend.app.services import backlog_store
 from backend.app.services.fabric_sql import (
     OFFLINE_SQL_MSG_TH,
+    RowCountExceeded,
+    enforce_row_count_threshold,
     fabric_can_query,
     format_query_preview,
     run_fabric_sql,
@@ -18,6 +20,17 @@ SQL_FAILED_CEO_MSG_TH = (
     "ทีม Data Analyst ลองปรับ SQL แล้ว 3 ครั้งแต่ยังไม่สำเร็จ "
     "กรุณาปรับคำถามให้เจาะจงขึ้น เช่น ระบุช่วงเวลา หรือหน่วยงานที่สนใจ"
 )
+
+
+def _run_sample_sql(sql: str, mode: str) -> dict[str, Any]:
+    """Sample-row query with the same pre-flight row-count guard as the DA path.
+
+    Without the guard a fail-open in D1 would let quality assembly re-scan an
+    oversized result here (DE review, Phase D). RowCountExceeded propagates to
+    the caller, which renders a short note instead of sample rows.
+    """
+    enforce_row_count_threshold(sql)
+    return run_fabric_sql(sql, mode=mode, max_rows=5)
 
 
 def _extract_section(text: str, tag: str) -> str:
@@ -97,9 +110,12 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
             sample_ref = "skipped_offline"
         else:
             try:
-                primary_result = run_fabric_sql(sql_primary, mode=state.mode or "explore", max_rows=5)
+                primary_result = _run_sample_sql(sql_primary, state.mode or "explore")
                 sample_preview = format_query_preview(primary_result)
                 sample_ref = "inline"
+            except RowCountExceeded as exc:
+                sample_preview = f"(ข้ามตัวอย่างข้อมูล — {exc.message_th})"
+                sample_ref = "skipped_row_count"
             except Exception as exc:
                 # Keep message short — never dump a full traceback into the CEO report.
                 sample_preview = f"(รัน SQL ไม่สำเร็จ: {type(exc).__name__})"
@@ -111,7 +127,7 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         and fabric_can_query()
     ):
         try:
-            alt_result = run_fabric_sql(sql_alternative, mode=state.mode or "explore", max_rows=5)
+            alt_result = _run_sample_sql(sql_alternative, state.mode or "explore")
             sample_preview += "\n\n--- Sanity check ---\n" + format_query_preview(alt_result)
         except Exception:
             pass

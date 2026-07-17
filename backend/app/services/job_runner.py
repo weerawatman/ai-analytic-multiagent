@@ -8,6 +8,7 @@ each agent's output is persisted the moment it finishes.
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -27,6 +28,29 @@ _tasks: dict[str, asyncio.Task] = {}
 
 # Message `name`s that count as team-member output worth persisting mid-run.
 _AGENT_ROLES = {"data_engineer", "data_analyst", "data_scientist", "business_analyst"}
+
+# Failed-attempt marker lines carry technical detail (`ExceptionType: detail`,
+# ODBC text) that must never reach persisted chat history.
+_SQL_ATTEMPT_FAILED_LINE = re.compile(r"^SQL_ATTEMPT_FAILED:.*$", re.MULTILINE)
+
+
+def _sanitize_agent_content(name: str, content: str) -> str:
+    """Strip technical SQL-failure text before persisting mid-stream messages.
+
+    data_analyst failure attempts accumulate `SQL_ATTEMPT_FAILED: ...` lines;
+    each is replaced with a short polite Thai note numbered per attempt, while
+    the analytic portion and the final graceful summary stay intact.
+    """
+    if name != "data_analyst" or "SQL_ATTEMPT_FAILED" not in content:
+        return content
+    attempt = 0
+
+    def _replace(_match: re.Match[str]) -> str:
+        nonlocal attempt
+        attempt += 1
+        return f"[รอบที่ {attempt}] SQL ยังไม่ผ่าน — ทีมกำลังปรับและลองใหม่"
+
+    return _SQL_ATTEMPT_FAILED_LINE.sub(_replace, content)
 
 
 class JobConflictError(RuntimeError):
@@ -104,7 +128,7 @@ def _persist_new_messages(request: ChatRequest, messages: list[Any], already_see
             chat_store.add_message(
                 request.thread_id,
                 role="assistant",
-                content=str(content),
+                content=_sanitize_agent_content(name, str(content)),
                 agent=name,
                 mode=request.mode,
                 theme=request.theme,
@@ -281,23 +305,45 @@ async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
             consultant_note = None
             if not state.requires_approval and consultant_service.should_review(state):
                 job_store.append_step(job_id, "consultant_review")
-                consultant_note = await consultant_service.review_answer(
-                    request.theme_id or "",
-                    request.theme or "",
-                    request.message,
-                    draft_answer=state.final_answer
-                    or state.query_result
-                    or state.ba_summary
-                    or "",
-                    quality_payload=state.quality_payload or {},
-                    step_errors=state.step_errors,
-                )
-                job_store.finish_step(
-                    job_id,
-                    "consultant_review",
-                    "done" if consultant_note else "failed",
-                    None if consultant_note else "consultant unavailable — skipped",
-                )
+                # The 1200s wall-clock wait_for above only covers the graph;
+                # bound the consultant step separately so a hung Claude call
+                # cannot stall the job indefinitely (Phase D review, D4 gap).
+                consultant_seconds = get_settings().consultant_timeout + 30
+                try:
+                    consultant_note = await asyncio.wait_for(
+                        consultant_service.review_answer(
+                            request.theme_id or "",
+                            request.theme or "",
+                            request.message,
+                            draft_answer=state.final_answer
+                            or state.query_result
+                            or state.ba_summary
+                            or "",
+                            quality_payload=state.quality_payload or {},
+                            step_errors=state.step_errors,
+                        ),
+                        timeout=consultant_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        "Chat job %s consultant review timed out after %ss — skipped",
+                        job_id,
+                        consultant_seconds,
+                    )
+                    consultant_note = None
+                    job_store.finish_step(
+                        job_id,
+                        "consultant_review",
+                        "failed",
+                        f"consultant review timed out ({consultant_seconds}s) — skipped",
+                    )
+                else:
+                    job_store.finish_step(
+                        job_id,
+                        "consultant_review",
+                        "done" if consultant_note else "failed",
+                        None if consultant_note else "consultant unavailable — skipped",
+                    )
             result = _build_chat_result(request, state, consultant_note=consultant_note)
             job_store.update_job(
                 job_id,

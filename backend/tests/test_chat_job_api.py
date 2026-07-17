@@ -199,6 +199,89 @@ async def test_chat_job_wall_clock_timeout(client: AsyncClient, temp_storage, mo
     get_settings.cache_clear()
 
 
+async def test_chat_job_consultant_review_timeout_continues(
+    client: AsyncClient, temp_storage, monkeypatch
+):
+    """A hung consultant (Claude) call must not stall the job — the step is
+    marked failed after its own bounded timeout and the answer still ships."""
+    job_store.init_jobs_db()
+    # Consultant budget in job_runner = consultant_timeout + 30 → 1s here.
+    monkeypatch.setenv("CONSULTANT_TIMEOUT", "-29")
+    from backend.app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(job_runner, "graph", FakeGraph(_final_state()))
+    monkeypatch.setattr(
+        "backend.app.services.consultant_service.should_review", lambda state: True
+    )
+
+    async def hung_review(*args, **kwargs):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(
+        "backend.app.services.consultant_service.review_answer", hung_review
+    )
+
+    response = await client.post(
+        "/api/v1/chat/",
+        json={"thread_id": "t-consult-hang", "message": "ยอดขาย", "mode": "explore"},
+    )
+    assert response.status_code == 202
+    job = await _poll_until_done(client, response.json()["job_id"], timeout=10.0)
+    assert job["status"] == "done"
+    assert job["result"]["content"] == "คำตอบสุดท้ายจากทีม"
+    review_steps = [p for p in job["progress"] if p["step"] == "consultant_review"]
+    assert review_steps and review_steps[-1]["status"] == "failed"
+    assert "timed out" in (review_steps[-1].get("note") or "")
+    get_settings.cache_clear()
+
+
+def test_persist_new_messages_sanitizes_da_failed_attempts(temp_storage):
+    """Mid-stream persisted DA messages must not leak exception/ODBC details."""
+    from backend.app.agents.data_analyst import SQL_FAILED_SUMMARY_TH
+    from backend.app.schemas.chat import ChatRequest
+
+    request = ChatRequest(thread_id="t-sanitize", message="ยอดขาย", mode="explore")
+    da_fail = AIMessage(
+        content=(
+            "ANALYSIS: draft วิเคราะห์ยอดขาย\n\n"
+            "SQL_ATTEMPT_FAILED: รัน SQL ไม่สำเร็จ (ProgrammingError: ('42000', "
+            "'[42000] [Microsoft][ODBC Driver 18 for SQL Server]...'))\n\n"
+            "SQL_ATTEMPT_FAILED: รัน SQL ไม่สำเร็จ (OperationalError: timeout)\n\n"
+            + SQL_FAILED_SUMMARY_TH
+        ),
+        name="data_analyst",
+    )
+    ba_msg = AIMessage(content="BA: สรุปเชิงธุรกิจ", name="business_analyst")
+
+    count = job_runner._persist_new_messages(
+        request, [HumanMessage(content="ยอดขาย"), da_fail, ba_msg], 0
+    )
+    assert count == 3
+
+    messages = chat_store.get_messages("t-sanitize")
+    da_persisted = [m["content"] for m in messages if m["agent"] == "data_analyst"]
+    assert len(da_persisted) == 1
+    body = da_persisted[0]
+    # Analytic portion + final graceful summary intact; attempts noted politely.
+    assert "ANALYSIS: draft วิเคราะห์ยอดขาย" in body
+    assert SQL_FAILED_SUMMARY_TH in body
+    assert "[รอบที่ 1] SQL ยังไม่ผ่าน" in body
+    assert "[รอบที่ 2] SQL ยังไม่ผ่าน" in body
+    for banned in (
+        "SQL_ATTEMPT_FAILED",
+        "ProgrammingError",
+        "OperationalError",
+        "ODBC",
+        "42000",
+        "Traceback",
+    ):
+        assert banned not in body
+    # Non-DA messages pass through untouched.
+    ba_persisted = [m["content"] for m in messages if m["agent"] == "business_analyst"]
+    assert ba_persisted == ["BA: สรุปเชิงธุรกิจ"]
+
+
 async def test_chat_job_graceful_sql_failed_result(client: AsyncClient, temp_storage, monkeypatch):
     """Final answer after exhausted SQL retries must be polite Thai — not raw traceback."""
     from backend.app.services.quality_assembly import SQL_FAILED_CEO_MSG_TH

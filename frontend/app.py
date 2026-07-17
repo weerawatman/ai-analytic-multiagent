@@ -17,7 +17,9 @@ from components.promotion_panel import render_promotion_panel
 from components.status_bar import render_fabric_status, render_mode_selector
 from components.validation_panel import render_validation_panel
 
-DEFAULT_TIMEOUT = float(os.getenv("COMPOSE_HTTP_TIMEOUT", "600"))
+DEFAULT_TIMEOUT = float(
+    os.getenv("FRONTEND_HTTP_TIMEOUT") or os.getenv("COMPOSE_HTTP_TIMEOUT", "600")
+)
 
 st.set_page_config(
     page_title="AI Fabric Insight Explorer",

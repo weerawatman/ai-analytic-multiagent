@@ -319,7 +319,7 @@ async def data_analyst_node(state: AgentState) -> dict:
         content = response.content  # type: ignore[assignment]
     except Exception as e:
         logger.exception("Data Analyst LLM call failed")
-        content = f"Data Analyst error: {e}"
+        content = f"Data Analyst ไม่พร้อมชั่วคราว ({type(e).__name__}) — ลองใหม่อีกครั้ง"
         step_errors.append(f"data_analyst: {e}")
 
     sql = _extract_sql(content) or sql

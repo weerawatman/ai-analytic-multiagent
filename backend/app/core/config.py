@@ -48,7 +48,8 @@ class Settings(BaseSettings):
 
     # Timeouts
     ollama_timeout: int = 600
-    # Wall-clock cap for an entire chat job (graph + retries + consultant)
+    # Wall-clock cap for the chat graph (incl. SQL retries); the consultant
+    # review step is bounded separately by consultant_timeout in job_runner.
     chat_job_max_seconds: int = 1200
 
     # Local storage

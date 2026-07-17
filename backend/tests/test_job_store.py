@@ -87,3 +87,32 @@ def test_fail_orphaned_jobs(temp_storage):
     assert count == 1
     assert job_store.get_job(running["id"])["status"] == "failed"
     assert job_store.get_job(finished["id"])["status"] == "done"
+
+
+def test_purge_old_terminal_jobs(temp_storage):
+    """D6 cleanup — old done/failed jobs purged, active and recent jobs kept."""
+    from datetime import datetime, timedelta, timezone
+
+    _init(temp_storage)
+    old_done = job_store.create_job("chat", "t-old-done")
+    old_failed = job_store.create_job("chat", "t-old-failed")
+    recent_done = job_store.create_job("chat", "t-recent")
+    still_running = job_store.create_job("chat", "t-running")
+
+    old_ts = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    job_store.update_job(old_done["id"], status="done", finished_at=old_ts)
+    job_store.update_job(old_failed["id"], status="failed", finished_at=old_ts)
+    job_store.update_job(recent_done["id"], status="done")
+    job_store.update_job(still_running["id"], status="running")
+
+    purged = job_store.purge_old_terminal_jobs(older_than_days=14)
+    assert purged == 2
+    assert job_store.get_job(old_done["id"]) is None
+    assert job_store.get_job(old_failed["id"]) is None
+    assert job_store.get_job(recent_done["id"]) is not None
+    assert job_store.get_job(still_running["id"]) is not None
+
+    import pytest
+
+    with pytest.raises(ValueError):
+        job_store.purge_old_terminal_jobs(older_than_days=0)

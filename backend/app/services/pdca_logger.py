@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from backend.app.services.local_paths import get_local_dir
+
+# Appends run via asyncio.to_thread from concurrent jobs — serialize them so
+# two writers can never interleave and corrupt a JSONL line (Phase D review).
+_write_lock = threading.Lock()
 
 
 def _pdca_path() -> Path:
@@ -19,8 +24,9 @@ def _pdca_path() -> Path:
 
 def _append_record(record: dict[str, Any]) -> None:
     line = json.dumps(record, ensure_ascii=False, default=str) + "\n"
-    with _pdca_path().open("a", encoding="utf-8") as f:
-        f.write(line)
+    with _write_lock:
+        with _pdca_path().open("a", encoding="utf-8") as f:
+            f.write(line)
 
 
 async def log_sql_failure(

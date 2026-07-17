@@ -65,3 +65,58 @@ def test_format_explore_response_th() -> None:
 def test_validate_quality_bar_d() -> None:
     missing = validate_quality_bar_d({"sql_primary": "SELECT 1"})
     assert "assumptions" in missing
+
+
+def test_sample_query_respects_row_count_guard(monkeypatch) -> None:
+    """Sample-row re-execution must go through the pre-flight COUNT(*) guard —
+    an oversized query is skipped with a polite note, never re-scanned."""
+    from backend.app.services import quality_assembly
+    from backend.app.services.fabric_sql import RowCountExceeded
+
+    monkeypatch.setattr(quality_assembly, "fabric_can_query", lambda: True)
+
+    def raise_exceeded(sql, settings=None):
+        raise RowCountExceeded(estimated=999999, threshold=50000)
+
+    monkeypatch.setattr(quality_assembly, "enforce_row_count_threshold", raise_exceeded)
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("run_fabric_sql must not be reached when the guard rejects")
+
+    monkeypatch.setattr(quality_assembly, "run_fabric_sql", must_not_run)
+
+    state = AgentState(
+        thread_id="t-guard",
+        mode="explore",
+        messages=[HumanMessage(content="ยอดขายทั้งตาราง")],
+        generated_sql="SELECT * FROM VBRK",
+        query_result="SQL: SELECT * FROM VBRK\nANALYSIS: กว้างมาก",
+    )
+    payload = quality_assembly.build_quality_payload(state)
+    assert payload["sample_data_ref"] == "skipped_row_count"
+    assert "เกินเกณฑ์" in payload["sample_preview"]
+
+
+def test_sample_query_runs_when_guard_passes(monkeypatch) -> None:
+    from backend.app.services import quality_assembly
+
+    monkeypatch.setattr(quality_assembly, "fabric_can_query", lambda: True)
+    monkeypatch.setattr(
+        quality_assembly, "enforce_row_count_threshold", lambda sql, settings=None: 10
+    )
+    monkeypatch.setattr(
+        quality_assembly,
+        "run_fabric_sql",
+        lambda sql, *, mode="explore", max_rows=None: {"rows": [{"n": 1}], "columns": ["n"]},
+    )
+
+    state = AgentState(
+        thread_id="t-guard-ok",
+        mode="explore",
+        messages=[HumanMessage(content="ยอดขาย")],
+        generated_sql="SELECT TOP 5 n FROM t",
+        query_result="SQL: SELECT TOP 5 n FROM t\nANALYSIS: เล็ก",
+    )
+    payload = quality_assembly.build_quality_payload(state)
+    assert payload["sample_data_ref"] == "inline"
+    assert '"n": 1' in payload["sample_preview"]

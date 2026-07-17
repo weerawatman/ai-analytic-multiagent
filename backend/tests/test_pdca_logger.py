@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -47,3 +48,26 @@ async def test_log_sql_failure_appends_every_attempt(temp_storage):
         assert "error" in rec and rec["error"]
         assert rec["retry_count"] == i
         assert rec.get("timestamp") or rec.get("at")
+
+
+@pytest.mark.anyio
+async def test_concurrent_appends_produce_valid_jsonl(temp_storage):
+    """Concurrent jobs append via threads — every line must stay valid JSON."""
+    await asyncio.gather(
+        *[
+            pdca_logger.log_sql_failure(
+                theme_id=f"theme-{i}",
+                user_prompt="คำถาม " + "ก" * 200,
+                sql=f"SELECT {i} FROM t",
+                error="boom",
+                retry_count=(i % 3) + 1,
+            )
+            for i in range(30)
+        ]
+    )
+
+    path = temp_storage / "logs" / "pdca_failures.jsonl"
+    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(lines) == 30
+    themes = {json.loads(ln)["theme_id"] for ln in lines}  # every line parses
+    assert themes == {f"theme-{i}" for i in range(30)}

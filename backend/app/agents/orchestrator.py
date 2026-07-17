@@ -11,6 +11,7 @@ from backend.app.agents.quality_node import quality_assembly_node
 from backend.app.agents.state import AgentState
 from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
+from backend.app.services.quality_assembly import SQL_FAILED_CEO_MSG_TH
 
 router_llm = make_chat_ollama(temperature=0)
 
@@ -122,6 +123,13 @@ def after_approval(state: AgentState) -> str:
 async def summarize_node(state: AgentState) -> dict:
     if state.final_answer:
         return {}
+
+    # Phase D graceful degradation — on the trusted/router path there is no
+    # quality_assembly node to clean up, and query_result carries raw
+    # SQL_ATTEMPT_FAILED / exception text. Never concatenate that into the
+    # CEO-facing answer; return the same polite Thai message Explore uses.
+    if state.sql_failed:
+        return {"final_answer": SQL_FAILED_CEO_MSG_TH}
 
     parts: list[str] = []
     if state.schema_info:

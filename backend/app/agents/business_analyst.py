@@ -118,7 +118,7 @@ async def business_analyst_node(state: AgentState) -> dict:
         content: str = response.content  # type: ignore[assignment]
     except Exception as e:
         logger.exception("BA LLM call failed")
-        content = f"Business Analyst error: {e}"
+        content = f"Business Analyst ไม่พร้อมชั่วคราว ({type(e).__name__}) — ลองใหม่อีกครั้ง"
         step_errors.append(f"business_analyst: {e}")
 
     return {

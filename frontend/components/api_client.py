@@ -3,7 +3,9 @@ import os
 import httpx
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
-DEFAULT_TIMEOUT = float(os.getenv("COMPOSE_HTTP_TIMEOUT", "600"))
+DEFAULT_TIMEOUT = float(
+    os.getenv("FRONTEND_HTTP_TIMEOUT") or os.getenv("COMPOSE_HTTP_TIMEOUT", "600")
+)
 # Collaborative chat (DE→DA→DS→BA) on LAN Ollama often exceeds 10 minutes
 CHAT_TIMEOUT = float(os.getenv("CHAT_HTTP_TIMEOUT", "3600"))
 ONBOARDING_TIMEOUT = float(os.getenv("ONBOARDING_HTTP_TIMEOUT", "3600"))

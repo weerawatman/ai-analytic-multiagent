@@ -27,6 +27,69 @@ def test_strip_trailing_order_by_with_top():
     assert "TOP 10" in strip_trailing_order_by(sql).upper()
 
 
+def test_strip_preserves_nested_order_by():
+    """ORDER BY inside a subquery (with TOP) must survive the strip."""
+    sql = "SELECT * FROM (SELECT TOP 5 a FROM t ORDER BY a) x"
+    assert strip_trailing_order_by(sql) == sql
+
+
+def test_strip_trailing_order_by_after_subquery():
+    sql = "SELECT * FROM (SELECT TOP 5 a FROM t ORDER BY a) x ORDER BY x.a DESC"
+    assert strip_trailing_order_by(sql) == "SELECT * FROM (SELECT TOP 5 a FROM t ORDER BY a) x"
+
+
+def test_strip_trailing_order_by_with_offset_fetch():
+    sql = "SELECT a FROM t ORDER BY a OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY"
+    assert strip_trailing_order_by(sql) == "SELECT a FROM t"
+
+
+def test_strip_ignores_order_by_inside_string_literal():
+    sql = "SELECT a FROM t WHERE note = 'ORDER BY hack'"
+    assert strip_trailing_order_by(sql) == sql
+
+
+def test_build_count_guard_sql_nested_order_by_balanced():
+    sql = "SELECT * FROM (SELECT TOP 5 a FROM t ORDER BY a) x"
+    wrapped = build_count_guard_sql(sql)
+    assert wrapped.count("(") == wrapped.count(")")
+    assert wrapped.upper().startswith("SELECT COUNT(*)")
+    assert "_guard_cnt" in wrapped
+    assert "ORDER BY a" in wrapped  # inner subquery ORDER BY preserved
+    from backend.app.services.sql_guard import validate_read_only_sql
+
+    assert validate_read_only_sql(wrapped)
+
+
+def test_build_count_guard_sql_cte_keeps_with_prefix():
+    """SELECT COUNT(*) FROM (WITH ...) is invalid T-SQL — WITH must stay outside."""
+    sql = "WITH cte AS (SELECT a FROM t WHERE b = 1) SELECT a FROM cte ORDER BY a"
+    wrapped = build_count_guard_sql(sql)
+    assert wrapped.startswith("WITH cte AS (SELECT a FROM t WHERE b = 1)")
+    assert not wrapped.upper().startswith("SELECT COUNT(*)")
+    assert "SELECT COUNT(*) AS cnt FROM (\nSELECT a FROM cte\n) AS _guard_cnt" in wrapped
+    assert wrapped.count("(") == wrapped.count(")")
+    from backend.app.services.sql_guard import validate_read_only_sql
+
+    assert validate_read_only_sql(wrapped)
+
+
+def test_build_count_guard_sql_multiple_ctes():
+    sql = (
+        "WITH c1 AS (SELECT a FROM t1 ORDER BY a OFFSET 0 ROWS), "
+        "c2 (a) AS (SELECT a FROM c1) "
+        "SELECT c2.a FROM c2 JOIN c1 ON c1.a = c2.a ORDER BY c2.a"
+    )
+    wrapped = build_count_guard_sql(sql)
+    assert wrapped.count("(") == wrapped.count(")")
+    count_at = wrapped.index("SELECT COUNT(*)")
+    # Both CTE definitions stay in the prefix; only the final SELECT is wrapped.
+    assert "WITH c1 AS (SELECT a FROM t1 ORDER BY a OFFSET 0 ROWS)" in wrapped[:count_at]
+    assert "c2 (a) AS (SELECT a FROM c1)" in wrapped[:count_at]
+    inner = wrapped[count_at:]
+    assert "SELECT c2.a FROM c2 JOIN c1 ON c1.a = c2.a" in inner
+    assert "ORDER BY c2.a" not in inner
+
+
 def test_build_count_guard_sql_strips_order_by():
     sql = "SELECT TOP 5 * FROM CE1SATG ORDER BY WW005 DESC"
     wrapped = build_count_guard_sql(sql)

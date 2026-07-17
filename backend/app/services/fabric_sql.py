@@ -20,8 +20,11 @@ OFFLINE_SQL_MSG_TH = (
     "Fabric ไม่พร้อม (capacity pause / offline) — ข้ามการรัน SQL ใช้ discovery บนดิสก์ + draft SQL"
 )
 
-# Trailing ORDER BY (and optional OFFSET/FETCH) — illegal inside a derived table without TOP.
-_TRAILING_ORDER_BY = re.compile(r"\s+ORDER\s+BY\b[\s\S]*$", re.IGNORECASE)
+# ORDER BY at paren depth 0 is the outermost one — illegal inside a derived
+# table without TOP/OFFSET, so it must be stripped before the COUNT(*) wrap.
+_ORDER_BY_RE = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
+_SELECT_RE = re.compile(r"\bSELECT\b", re.IGNORECASE)
+_WITH_RE = re.compile(r"\bWITH\b", re.IGNORECASE)
 
 
 class RowCountExceeded(Exception):
@@ -42,15 +45,122 @@ class RowCountExceeded(Exception):
         self.message_th = message_th
 
 
+def _skip_leading_ws_comments(sql: str) -> int:
+    """Index of the first character past leading whitespace / SQL comments."""
+    i = 0
+    n = len(sql)
+    while i < n:
+        if sql[i].isspace():
+            i += 1
+        elif sql.startswith("--", i):
+            end = sql.find("\n", i)
+            i = n if end == -1 else end + 1
+        elif sql.startswith("/*", i):
+            end = sql.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+        else:
+            break
+    return i
+
+
+def _depth0_match_positions(sql: str, pattern: re.Pattern[str], start: int = 0) -> list[int]:
+    """Start indices where `pattern` matches at paren depth 0.
+
+    Skips string literals ('...'), bracket identifiers ([...]) and comments so
+    parentheses inside them never affect the depth count.
+    """
+    positions: list[int] = []
+    depth = 0
+    i = start
+    n = len(sql)
+    while i < n:
+        ch = sql[i]
+        if ch == "'":
+            i += 1
+            while i < n:
+                if sql[i] == "'":
+                    if i + 1 < n and sql[i + 1] == "'":  # '' escape inside literal
+                        i += 2
+                        continue
+                    break
+                i += 1
+            i += 1
+        elif ch == "[":
+            end = sql.find("]", i + 1)
+            i = n if end == -1 else end + 1
+        elif sql.startswith("--", i):
+            end = sql.find("\n", i)
+            i = n if end == -1 else end + 1
+        elif sql.startswith("/*", i):
+            end = sql.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+        elif ch == "(":
+            depth += 1
+            i += 1
+        elif ch == ")":
+            depth = max(depth - 1, 0)
+            i += 1
+        else:
+            if depth == 0:
+                match = pattern.match(sql, i)
+                if match:
+                    positions.append(i)
+                    i = match.end()
+                    continue
+            i += 1
+    return positions
+
+
 def strip_trailing_order_by(sql: str) -> str:
-    """Remove trailing ORDER BY so the query can be wrapped in a derived table."""
+    """Remove only the outermost trailing ORDER BY (plus any OFFSET/FETCH tail).
+
+    Only an ORDER BY at paren depth 0 is stripped — ORDER BY inside subqueries
+    (e.g. `SELECT * FROM (SELECT TOP 5 a FROM t ORDER BY a) x`) must survive,
+    otherwise the stripped SQL has unbalanced parens and the COUNT guard
+    fail-opens on every such query.
+
+    Note (DA finding): when the outer ORDER BY carries OFFSET/FETCH pagination,
+    stripping it makes COUNT(*) estimate the full unpaginated set. That is a
+    conservative overestimate and acceptable per the Phase D plan (the guard
+    would rather over-reject than silently miss an oversized result).
+    """
     cleaned = sql.strip().rstrip(";").strip()
-    return _TRAILING_ORDER_BY.sub("", cleaned).strip()
+    positions = _depth0_match_positions(cleaned, _ORDER_BY_RE)
+    if not positions:
+        return cleaned
+    return cleaned[: positions[-1]].rstrip()
+
+
+def _split_cte_prefix(sql: str) -> tuple[str, str] | None:
+    """Split `WITH ... SELECT ...` into (cte_prefix, final_select).
+
+    Returns None when the query does not start with WITH (after leading
+    whitespace/comments) or no depth-0 SELECT is found. CTE bodies live inside
+    parens, so the first SELECT at paren depth 0 after the WITH keyword (past
+    the comma-separated `name AS (...)` list) is the statement's final SELECT.
+    """
+    start = _skip_leading_ws_comments(sql)
+    with_match = _WITH_RE.match(sql, start)
+    if not with_match:
+        return None
+    select_positions = _depth0_match_positions(sql, _SELECT_RE, start=with_match.end())
+    if not select_positions:
+        return None
+    split = select_positions[0]
+    return sql[:split].rstrip(), sql[split:].strip()
 
 
 def build_count_guard_sql(sql: str) -> str:
-    """Wrap a single SELECT/WITH in COUNT(*) after stripping trailing ORDER BY."""
+    """Wrap a single SELECT/WITH in COUNT(*) after stripping trailing ORDER BY.
+
+    T-SQL forbids `SELECT COUNT(*) FROM (WITH ... SELECT ...)`, so for CTE
+    queries the WITH prefix stays outside and only the final SELECT is wrapped.
+    """
     inner = strip_trailing_order_by(sql)
+    cte_split = _split_cte_prefix(inner)
+    if cte_split is not None:
+        cte_prefix, final_select = cte_split
+        return f"{cte_prefix}\nSELECT COUNT(*) AS cnt FROM (\n{final_select}\n) AS _guard_cnt"
     return f"SELECT COUNT(*) AS cnt FROM (\n{inner}\n) AS _guard_cnt"
 
 

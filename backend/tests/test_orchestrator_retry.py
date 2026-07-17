@@ -17,7 +17,7 @@ from backend.app.agents.data_analyst import (
     _retry_guidance,
     data_analyst_node,
 )
-from backend.app.agents.orchestrator import after_analyst
+from backend.app.agents.orchestrator import after_analyst, summarize_node
 from backend.app.agents.state import AgentState
 from backend.app.services.fabric_sql import RowCountExceeded
 from backend.app.services.quality_assembly import (
@@ -52,6 +52,52 @@ def test_after_analyst_stops_when_sql_failed():
 def test_after_analyst_trusted_path_without_error():
     state = AgentState(mode="trusted", use_collaborative_flow=False, sql_error="")
     assert after_analyst(state) == "summarize"
+
+
+def test_after_analyst_trusted_sql_failed_goes_to_summarize():
+    state = AgentState(
+        mode="trusted",
+        use_collaborative_flow=False,
+        sql_error="still broken",
+        sql_failed=True,
+        sql_retry_count=MAX_SQL_ATTEMPTS,
+    )
+    assert after_analyst(state) == "summarize"
+
+
+@pytest.mark.anyio
+async def test_trusted_sql_failed_final_answer_is_polite():
+    """Trusted path has no quality_assembly cleanup — summarize itself must not
+    concatenate raw SQL failure text into the CEO-facing answer."""
+    state = AgentState(
+        mode="trusted",
+        use_collaborative_flow=False,
+        sql_failed=True,
+        sql_retry_count=MAX_SQL_ATTEMPTS,
+        sql_error="รัน SQL ไม่สำเร็จ (ProgrammingError: '42000' ODBC)",
+        query_result=(
+            "ANALYSIS: Trusted ยอดขาย\n\n"
+            "SQL_ATTEMPT_FAILED: รัน SQL ไม่สำเร็จ (ProgrammingError: ('42000', "
+            "'[42000] [Microsoft][ODBC Driver 18 for SQL Server]...'))\n\n"
+            + SQL_FAILED_SUMMARY_TH
+        ),
+        messages=[HumanMessage(content="ยอดขายเดือนนี้")],
+    )
+    out = await summarize_node(state)
+    assert out["final_answer"] == SQL_FAILED_CEO_MSG_TH
+    for banned in ("SQL_ATTEMPT_FAILED", "Traceback", "ProgrammingError", "ODBC", "42000"):
+        assert banned not in out["final_answer"]
+
+
+@pytest.mark.anyio
+async def test_summarize_without_failure_unchanged():
+    state = AgentState(
+        mode="trusted",
+        query_result="ANALYSIS: Trusted ยอดขาย 100 ล้านบาท",
+        messages=[HumanMessage(content="ยอดขาย")],
+    )
+    out = await summarize_node(state)
+    assert "ANALYSIS: Trusted ยอดขาย 100 ล้านบาท" in out["final_answer"]
 
 
 def test_error_classes_have_retry_guidance():
@@ -191,6 +237,115 @@ async def test_data_analyst_column_error_enters_retry_state(temp_storage, monkey
     assert result["sql_error"]
     assert "SQL_ERROR:" not in result["query_result"]
     assert after_analyst(AgentState(**{**state.model_dump(), **result})) == "retry_sql"
+
+
+@pytest.mark.anyio
+async def test_data_analyst_retry_success_clears_sql_error(temp_storage, monkeypatch):
+    """Attempt 2 fixes the SQL: sql_error must be cleared and the loop must exit."""
+    from backend.app.agents import data_analyst
+
+    monkeypatch.setattr(data_analyst, "fabric_can_query", lambda: True)
+
+    class FixItLLM:
+        async def ainvoke(self, messages):
+            return SimpleNamespace(content="```sql\nSELECT NETWR FROM VBRK\n```")
+
+    monkeypatch.setattr(data_analyst, "llm", FixItLLM())
+    monkeypatch.setattr(data_analyst, "read_trusted_layer", AsyncMock(return_value={"metrics": []}))
+    monkeypatch.setattr(
+        data_analyst, "enforce_row_count_threshold_async", AsyncMock(return_value=10)
+    )
+    monkeypatch.setattr(
+        data_analyst,
+        "run_fabric_sql_async",
+        AsyncMock(return_value={"rows": [{"NETWR": 100}], "columns": ["NETWR"]}),
+    )
+
+    state = AgentState(
+        thread_id="t-retry-ok",
+        mode="explore",
+        discovery_context="## VBRK\n  - NETWR",
+        generated_sql="SELECT BADCOL FROM VBRK",
+        query_result="ANALYSIS: draft\nSQL_ATTEMPT_FAILED: ชื่อคอลัมน์ผิด",
+        sql_error="Invalid column name 'BADCOL'. (42S22)",
+        sql_retry_count=1,
+        messages=[HumanMessage(content="ยอดขาย")],
+    )
+    result = await data_analyst_node(state)
+    assert result["sql_error"] == ""
+    assert result["sql_failed"] is False
+    assert result["generated_sql"] == "SELECT NETWR FROM VBRK"
+    assert "QUERY_RESULT" in result["query_result"]
+    merged = AgentState(**{**state.model_dump(), **result})
+    assert after_analyst(merged) != "retry_sql"
+
+
+@pytest.mark.anyio
+async def test_explore_critique_skips_llm_when_sql_failed(temp_storage, monkeypatch):
+    """DS critique on failed SQL must be deterministic — no LLM echo of errors."""
+    from backend.app.agents import data_scientist
+    from backend.app.agents.data_scientist import SQL_FAILED_CRITIQUE_TH, explore_critique_node
+
+    class BoomLLM:
+        async def ainvoke(self, messages):
+            raise AssertionError("LLM must not be called when sql_failed=True")
+
+    monkeypatch.setattr(data_scientist, "llm", BoomLLM())
+
+    state = AgentState(
+        thread_id="t-ds-skip",
+        mode="explore",
+        sql_failed=True,
+        sql_retry_count=MAX_SQL_ATTEMPTS,
+        query_result="SQL_ATTEMPT_FAILED: รัน SQL ไม่สำเร็จ (ProgrammingError: ODBC ...)",
+        messages=[HumanMessage(content="ยอดขาย")],
+    )
+    out = await explore_critique_node(state)
+    assert out["analysis_summary"] == SQL_FAILED_CRITIQUE_TH
+    for banned in ("SQL_ATTEMPT_FAILED", "ProgrammingError", "ODBC", "Traceback"):
+        assert banned not in out["analysis_summary"]
+
+
+@pytest.mark.anyio
+async def test_data_engineer_inspection_sql_error_not_raw(temp_storage, monkeypatch):
+    """DE inspection-SQL failure must not append raw `SQL_ERROR: {e}` to content."""
+    from backend.app.agents import data_engineer
+    from backend.app.agents.data_engineer import data_engineer_node
+
+    class DELLM:
+        async def ainvoke(self, messages):
+            return SimpleNamespace(
+                content=(
+                    "SCHEMA: ตาราง VBRK\nSEMANTIC_UPDATE: none\nSUMMARY: สรุป\n"
+                    "SQL:\n```sql\nSELECT TOP 5 * FROM VBRK\n```"
+                )
+            )
+
+    monkeypatch.setattr(data_engineer, "llm", DELLM())
+    monkeypatch.setattr(data_engineer, "fabric_can_query", lambda: True)
+    monkeypatch.setattr(
+        data_engineer, "read_semantic_layer", AsyncMock(return_value="(empty)")
+    )
+
+    async def odbc_boom(sql, *, mode="explore", max_rows=None):
+        raise RuntimeError("('42000', '[42000] [Microsoft][ODBC Driver 18 for SQL Server]...')")
+
+    monkeypatch.setattr(data_engineer, "run_fabric_sql_async", odbc_boom)
+
+    state = AgentState(
+        thread_id="t-de",
+        mode="explore",
+        discovery_context="## VBRK",
+        messages=[HumanMessage(content="โครงสร้างตาราง")],
+    )
+    out = await data_engineer_node(state)
+    content = out["schema_info"]
+    assert "SQL_ERROR:" not in content
+    assert "ODBC" not in content
+    assert "42000" not in content
+    assert "SQL_SKIPPED" in content
+    # step_errors keep the detail for internal diagnostics.
+    assert out["step_errors"] and "ODBC" in out["step_errors"][0]
 
 
 def test_graceful_degradation_in_quality_assembly(temp_storage, monkeypatch):
