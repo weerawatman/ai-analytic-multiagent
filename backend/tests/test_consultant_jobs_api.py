@@ -206,6 +206,14 @@ async def test_onboarding_coach_timeline(
     monkeypatch.setattr(job_runner, "run_onboarding", fake_onboarding)
     monkeypatch.setattr(consultant_service, "is_enabled", lambda mode: mode == "coach_onboarding")
     monkeypatch.setattr(consultant_service, "coach_team", fake_coach)
+    # Deep-profile steps run first in onboarding — keep them offline so the
+    # test never probes real Fabric/Postgres reachability.
+    monkeypatch.setattr(
+        "backend.app.services.deep_profile_service.get_active_sql_source", lambda: "offline"
+    )
+    monkeypatch.setattr(
+        "backend.app.services.insight_starter_service.get_active_sql_source", lambda: "offline"
+    )
 
     response = await client.post("/api/v1/onboarding/theme-ob/run?theme_name=ยอดขาย")
     assert response.status_code == 202

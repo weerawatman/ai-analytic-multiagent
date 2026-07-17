@@ -23,6 +23,7 @@ def make_chat_ollama(*, model: str | None = None, temperature: float = 0.0) -> C
         temperature=temperature,
         num_ctx=settings.ollama_num_ctx,
         num_predict=settings.ollama_num_predict,
+        keep_alive=settings.ollama_keep_alive,
         client_kwargs=timeout_kwargs,
         async_client_kwargs=timeout_kwargs,
     )

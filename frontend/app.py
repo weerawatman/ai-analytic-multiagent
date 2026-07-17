@@ -46,6 +46,8 @@ STEP_LABELS = {
     "consultant_coach": "🎓 โค้ชทีม (Claude)",
     "consult": "🎓 ปรึกษา Claude",
     "onboarding": "🧠 Onboarding",
+    "deep_profile": "🔬 Data Homework (profiling จริง)",
+    "starter_pack": "💡 Insight Starter Pack",
 }
 
 

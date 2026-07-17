@@ -30,6 +30,15 @@ def build_phase2_context(state: AgentState) -> dict[str, str]:
     table_refs = _table_refs_for_theme(theme_id, discovery)
     sql_ref = format_sql_reference_context(table_refs, theme_id=theme_id or None)
     team_memory = format_team_memory_context(theme_id or None)
+    if theme_id:
+        # Deterministic profiling evidence rides with team memory so every
+        # agent prompt that already includes the onboarding baseline also
+        # sees verified row counts / date ranges / DQ flags.
+        from backend.app.services.deep_profile_service import format_homework_context
+
+        homework = format_homework_context(theme_id)
+        if homework:
+            team_memory = f"{team_memory}\n\n{homework}" if team_memory else homework
     return {
         "discovery_context": discovery,
         "knowledge_context": knowledge,

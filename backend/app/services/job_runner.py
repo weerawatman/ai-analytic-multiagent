@@ -278,6 +278,114 @@ def _build_chat_result(
     ).model_dump()
 
 
+def _last_human_content(messages: list[Any]) -> str:
+    for message in reversed(messages or []):
+        if getattr(message, "type", "") == "human":
+            return str(getattr(message, "content", ""))
+    return ""
+
+
+async def _partial_state_for(request: ChatRequest) -> AgentState | None:
+    """Checkpointed state for this thread, only if it belongs to this question.
+
+    The MemorySaver checkpoint survives per-node completions, so even after a
+    wall-clock timeout the finished agents' output is recoverable. A snapshot
+    from a *previous* question (timeout before the first checkpoint of this
+    run) must never leak into this answer — hence the last-human-message guard.
+    """
+    try:
+        snapshot = await graph.aget_state({"configurable": {"thread_id": request.thread_id}})
+        values = getattr(snapshot, "values", None) or {}
+    except Exception:
+        logger.exception("Partial-state recovery failed for thread %s", request.thread_id)
+        return None
+    if not values:
+        return None
+    state = AgentState(**values)
+    if _last_human_content(state.messages) != request.message:
+        return None
+    return state
+
+
+def build_partial_answer(state: AgentState, max_seconds: int) -> str | None:
+    """Deterministic Thai partial answer from whatever agents completed.
+
+    Returns None when there is nothing useful to show (no DE/DS/DA output).
+    Never includes raw errors — content fields are already sanitized upstream.
+    """
+    from backend.app.agents.data_analyst import strip_failed_attempt_lines
+    from backend.app.services.quality_assembly import data_source_label_th
+
+    sections: list[str] = []
+    if state.schema_info:
+        sections.append(f"### 🔧 Data Engineer (เสร็จแล้ว)\n{state.schema_info[:1500]}")
+    if state.analysis_summary:
+        sections.append(f"### 🧪 Data Scientist (เสร็จแล้ว)\n{state.analysis_summary[:1500]}")
+    if state.query_result:
+        cleaned = strip_failed_attempt_lines(state.query_result)
+        if cleaned:
+            sections.append(f"### 📈 Data Analyst (เสร็จแล้ว)\n{cleaned[:1500]}")
+    if state.generated_sql and "DRAFT_SQL" not in (state.query_result or ""):
+        sections.append(f"### Draft SQL\n```sql\n{state.generated_sql[:1200]}\n```")
+    if not sections:
+        return None
+
+    header = (
+        f"⚠️ **คำตอบบางส่วน** — งานใช้เวลาเกินกำหนด {max_seconds} วินาที "
+        "ระบบจึงสรุปเท่าที่ทีมทำเสร็จแล้ว (ไม่ทิ้งงานเปล่า)"
+    )
+    if state.sql_source in ("fabric", "postgres"):
+        header += f"\n\nแหล่งข้อมูล: {data_source_label_th(state.sql_source)}"
+    next_action = (
+        "### ขั้นตอนถัดไป\n"
+        "- ถามซ้ำโดยระบุช่วงเวลา/หน่วยงานให้แคบลง เพื่อให้จบใน 1 รอบ\n"
+        "- หรือใช้ Draft SQL ข้างต้นตรวจกับ BA/DA ก่อน promote เป็น Trusted"
+    )
+    return "\n\n---\n\n".join([header, *sections, next_action])
+
+
+async def _finish_chat_job_with_partial(
+    job_id: str, request: ChatRequest, max_seconds: int
+) -> bool:
+    """After a wall-clock timeout, ship a partial answer when one exists."""
+    state = await _partial_state_for(request)
+    partial = build_partial_answer(state, max_seconds) if state else None
+    if not partial:
+        return False
+
+    chat_store.add_message(
+        request.thread_id,
+        role="assistant",
+        content=partial,
+        agent="ai_data_team",
+        mode=request.mode,
+        theme=request.theme,
+    )
+    timeout_note = (
+        f"งานเกินเวลา {max_seconds} วินาที — ส่งคำตอบบางส่วนจากขั้นตอนที่เสร็จแล้ว"
+    )
+    job = job_store.get_job(job_id)
+    if job and job.get("current_step"):
+        job_store.finish_step(job_id, job["current_step"], "failed", timeout_note)
+    result = ChatResponse(
+        thread_id=request.thread_id,
+        agent="ai_data_team",
+        content=partial,
+        requires_approval=False,
+    ).model_dump()
+    result["partial"] = True
+    job_store.update_job(
+        job_id,
+        status="done",
+        result=result,
+        error=None,
+        current_step=None,
+        finished_at=_utc_now(),
+    )
+    logger.warning("Chat job %s timed out — shipped partial answer", job_id)
+    return True
+
+
 async def _stream_chat_graph(job_id: str, request: ChatRequest) -> AgentState:
     """Run the LangGraph stream and return the final AgentState."""
     config = {"configurable": {"thread_id": request.thread_id}}
@@ -343,6 +451,10 @@ async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
                 )
             except asyncio.TimeoutError:
                 logger.error("Chat job %s timed out after %ss", job_id, max_seconds)
+                # Reliability contract: never end with a silent blank — if any
+                # agent finished, ship its output as a labeled partial answer.
+                if await _finish_chat_job_with_partial(job_id, request, max_seconds):
+                    return
                 _fail_job_on_timeout(job_id, max_seconds)
                 return
 
@@ -426,9 +538,55 @@ def start_onboarding_job(theme_id: str, theme_name: str = "") -> dict[str, Any]:
     return job
 
 
+async def _run_deep_profile_steps(job_id: str, theme_id: str, theme_name: str) -> dict[str, Any]:
+    """Deterministic homework + starter pack (bounded read-only SQL, no LLM).
+
+    Fail-soft: profiling problems are recorded on the step and must never
+    block the rest of the job.
+    """
+    from backend.app.services.deep_profile_service import build_homework
+    from backend.app.services.insight_starter_service import build_starter_pack
+
+    out: dict[str, Any] = {}
+    job_store.append_step(job_id, "deep_profile")
+    try:
+        homework = await asyncio.to_thread(build_homework, theme_id, theme_name)
+        out["homework"] = {
+            "evidence_level": homework.get("evidence_level"),
+            "tables": len(homework.get("table_roles") or {}),
+            "dq_issues": len(homework.get("data_quality_issues") or []),
+        }
+        job_store.finish_step(job_id, "deep_profile", "done")
+    except Exception as e:
+        logger.exception("Deep profile failed theme=%s", theme_id)
+        job_store.finish_step(
+            job_id, "deep_profile", "failed", f"ทำ data homework ไม่สำเร็จ ({type(e).__name__})"
+        )
+
+    job_store.append_step(job_id, "starter_pack")
+    try:
+        pack = await asyncio.to_thread(build_starter_pack, theme_id, theme_name)
+        validated = sum(
+            1 for i in pack.get("items", []) if i.get("evidence_status") == "validated"
+        )
+        out["starter_pack"] = {"items": len(pack.get("items", [])), "validated": validated}
+        job_store.finish_step(job_id, "starter_pack", "done")
+    except Exception as e:
+        logger.exception("Starter pack failed theme=%s", theme_id)
+        job_store.finish_step(
+            job_id, "starter_pack", "failed", f"สร้าง insight starter pack ไม่สำเร็จ ({type(e).__name__})"
+        )
+    return out
+
+
 async def _run_onboarding_work(job_id: str, theme_id: str, theme_name: str) -> dict[str, Any]:
+    # Deterministic evidence first — role LLM handoffs then reference real
+    # profiled numbers instead of guessing from table names.
+    deep = await _run_deep_profile_steps(job_id, theme_id, theme_name)
+
     job_store.append_step(job_id, "onboarding")
     result = await run_onboarding(theme_id, theme_name)
+    result.update(deep)
     job_store.finish_step(job_id, "onboarding", "done")
 
     if consultant_service.is_enabled("coach_onboarding"):
@@ -485,6 +643,62 @@ async def _run_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> No
         raise
     except Exception as e:
         logger.exception("Onboarding job %s failed theme=%s", job_id, theme_id)
+        _fail_job_on_error(job_id, e)
+
+
+def start_deep_onboarding_job(theme_id: str, theme_name: str = "") -> dict[str, Any]:
+    """Deterministic deep profiling only (homework + starter pack) — no LLM.
+
+    Cheap enough to re-run on demand from the UI without redoing the full
+    LLM onboarding.
+    """
+    existing = job_store.find_active_job("deep_onboarding", theme_id)
+    if existing is not None:
+        raise JobConflictError(existing)
+
+    job = job_store.create_job(
+        "deep_onboarding",
+        theme_id,
+        question=theme_name or theme_id,
+        params={"theme_name": theme_name},
+    )
+    _track(job["id"], asyncio.create_task(_run_deep_onboarding_job(job["id"], theme_id, theme_name)))
+    return job
+
+
+async def _run_deep_onboarding_job(job_id: str, theme_id: str, theme_name: str) -> None:
+    try:
+        job_store.update_job(job_id, status="running", started_at=_utc_now())
+        max_seconds = get_settings().deep_onboarding_max_seconds
+        try:
+            result = await asyncio.wait_for(
+                _run_deep_profile_steps(job_id, theme_id, theme_name),
+                timeout=max_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Deep onboarding job %s timed out after %ss", job_id, max_seconds)
+            _fail_job_on_timeout(job_id, max_seconds)
+            return
+
+        job_store.update_job(
+            job_id,
+            status="done",
+            result=result,
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        logger.info("Deep onboarding job %s done theme=%s", job_id, theme_id)
+    except asyncio.CancelledError:
+        job_store.update_job(
+            job_id,
+            status="cancelled",
+            error="Job was cancelled",
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        raise
+    except Exception as e:
+        logger.exception("Deep onboarding job %s failed theme=%s", job_id, theme_id)
         _fail_job_on_error(job_id, e)
 
 

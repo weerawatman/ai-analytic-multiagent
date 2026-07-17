@@ -47,7 +47,14 @@ class Settings(BaseSettings):
     ollama_model_analyst: str = ""
     ollama_model_ba: str = ""
     ollama_num_ctx: int = 16384
-    ollama_num_predict: int | None = None
+    # Bound generation length — unbounded output on CPU-only inference was a
+    # primary cause of chat jobs blowing the 1200s wall clock (each agent can
+    # otherwise free-run for thousands of tokens at a few tokens/sec).
+    ollama_num_predict: int | None = 1024
+    # Keep the model resident between agent steps. Ollama's default 5m
+    # keep_alive evicted the model between steps, adding a full model reload
+    # (~90s measured) to every agent call in the pipeline.
+    ollama_keep_alive: str = "60m"
 
     # FastAPI
     fastapi_host: str = "127.0.0.1"
@@ -66,6 +73,9 @@ class Settings(BaseSettings):
     # Wall-clock cap for the whole onboarding job (DE→DA→DS→BA + coach) —
     # generous because each Ollama role call may take up to ollama_timeout.
     onboarding_job_max_seconds: int = 3600
+    # Wall-clock cap for the deterministic deep-profiling job (homework +
+    # starter pack) — bounded SQL only, no LLM, so much tighter than onboarding.
+    deep_onboarding_max_seconds: int = 900
 
     # Local storage
     data_local_dir: str = "data/local"

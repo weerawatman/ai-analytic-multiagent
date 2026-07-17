@@ -30,6 +30,7 @@ class OnboardingState(BaseModel):
     knowledge_context: str = ""
     sql_reference_context: str = ""
     ceo_feedback_context: str = ""
+    homework_context: str = ""
     schema_info: str = ""
     query_result: str = ""
     analysis_summary: str = ""
@@ -72,8 +73,11 @@ def build_onboarding_input(
     from backend.app.agents.state import AgentState
     from backend.app.services.team_memory_store import get_or_create_team_memory
 
+    from backend.app.services.deep_profile_service import format_homework_context
+
     ctx_state = AgentState(theme_id=theme_id, theme=theme_name, thread_id=f"onboard-{theme_id}")
     ctx = build_phase2_context(ctx_state)
+    homework_context = format_homework_context(theme_id)
     memory = get_or_create_team_memory(theme_id, theme_name)
     memory["status"] = "running"
     from backend.app.services.team_memory_store import save_team_memory
@@ -88,6 +92,7 @@ def build_onboarding_input(
         "knowledge_context": ctx["knowledge_context"],
         "sql_reference_context": ctx["sql_reference_context"],
         "ceo_feedback_context": ctx["ceo_feedback_context"],
+        "homework_context": homework_context,
         "schema_info": "",
         "query_result": "",
         "analysis_summary": "",

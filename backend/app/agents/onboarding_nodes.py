@@ -68,6 +68,12 @@ def _base_context(state: Any) -> str:
         f"\nKnowledge:\n{_state_get(state, 'knowledge_context', '(none)')[:2000]}",
         f"\nSQL Reference:\n{_state_get(state, 'sql_reference_context', '(none)')[:2000]}",
     ]
+    homework = _state_get(state, "homework_context", "")
+    if homework:
+        parts.append(
+            "\nData homework evidence (real profiled numbers — cite these, do not guess):\n"
+            + homework[:2500]
+        )
     prior = _state_get(state, "prior_handoffs", "")
     if prior:
         parts.append(f"\nPrior team handoffs:\n{prior[:2500]}")
@@ -135,6 +141,7 @@ async def onboarding_ds_node(state: Any) -> dict[str, Any]:
         "knowledge_context": _state_get(state, "knowledge_context", ""),
         "sql_reference_context": _state_get(state, "sql_reference_context", ""),
         "ceo_feedback_context": _state_get(state, "ceo_feedback_context", ""),
+        "homework_context": _state_get(state, "homework_context", ""),
         "prior_handoffs": _state_get(state, "schema_info", ""),
     }
     ctx = _base_context(state_with_handoff)
@@ -185,6 +192,7 @@ async def onboarding_da_node(state: Any) -> dict[str, Any]:
         "knowledge_context": _state_get(state, "knowledge_context", ""),
         "sql_reference_context": _state_get(state, "sql_reference_context", ""),
         "ceo_feedback_context": _state_get(state, "ceo_feedback_context", ""),
+        "homework_context": _state_get(state, "homework_context", ""),
         "prior_handoffs": prior,
     }
     ctx = _base_context(state_with_handoff)

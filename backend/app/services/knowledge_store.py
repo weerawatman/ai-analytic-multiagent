@@ -146,9 +146,53 @@ async def update_item(kind: str, item_id: str, updates: dict[str, Any]) -> dict[
         raise KeyError(f"Item not found: {item_id}")
 
 
+# Prompt budget for the knowledge section. The old flat 20-items/kind cap
+# silently dropped owner-verified column mappings (VVA02–VVA22 → cleaned
+# columns) once metric/table entries filled the head of the list. Budgeting
+# is now by *category priority* under a char cap so metric formulas AND
+# table roles AND column mappings all reach the agents predictably.
+_KNOWLEDGE_CHAR_BUDGET = 9000
+
+# Priority buckets for glossary entries: metric definitions carry business
+# formulas (must never be cut), table entries carry roles/aliases, the rest
+# are column-level mappings that fill the remaining budget.
+_GLOSSARY_BUCKETS = ("metric", "table", "column")
+
+
+def _glossary_bucket(item: dict[str, Any]) -> str:
+    key = str(item.get("field_key") or "")
+    if key.startswith("metric."):
+        return "metric"
+    if key.startswith("table."):
+        return "table"
+    return "column"
+
+
+def _status_rank(item: dict[str, Any]) -> int:
+    return 0 if item.get("status") == "approved" else 1
+
+
+def _glossary_lines_budgeted(items: list[dict[str, Any]]) -> list[str]:
+    """Order glossary entries metric → table → column (approved first in each)."""
+    buckets: dict[str, list[dict[str, Any]]] = {b: [] for b in _GLOSSARY_BUCKETS}
+    for item in items:
+        buckets[_glossary_bucket(item)].append(item)
+    ordered: list[dict[str, Any]] = []
+    for bucket in _GLOSSARY_BUCKETS:
+        ordered.extend(sorted(buckets[bucket], key=_status_rank))
+    return [
+        f"- {i.get('field_key', i.get('id'))}: {i.get('definition_th', '')}" for i in ordered
+    ]
+
+
 def format_knowledge_context(*, theme: str | None = None) -> str:
-    """Sync helper for agent prompts — reads knowledge files (status-filtered)."""
-    lines: list[str] = []
+    """Sync helper for agent prompts — reads knowledge files (status-filtered).
+
+    Glossary entries are budgeted by category (metric formulas first, then
+    table roles, then column mappings) under a total char budget instead of a
+    flat per-kind item cap, so verified definitions reach agents predictably.
+    """
+    sections: list[tuple[str, list[str]]] = []
     for kind, label in [("glossary", "Glossary"), ("targets", "Targets"), ("relationships", "Relationships")]:
         path = _path_for(kind)
         if not path.exists():
@@ -160,17 +204,43 @@ def format_knowledge_context(*, theme: str | None = None) -> str:
         items = [i for i in items if _visible_to_prompts(i)]
         if not items:
             continue
+        if kind == "glossary":
+            entry_lines = _glossary_lines_budgeted(items)
+        elif kind == "targets":
+            entry_lines = [
+                f"- {i.get('name_th', '')}: {i.get('description_th', '')}" for i in items[:20]
+            ]
+        else:
+            entry_lines = [
+                f"- {i.get('from_table', '')} -> {i.get('to_table', '')} "
+                f"ON {i.get('join_keys', '')}"
+                for i in items[:20]
+            ]
+        sections.append((label, entry_lines))
+
+    if not sections:
+        return "(no knowledge entries yet)"
+
+    # Reserve space for targets/relationships first (they are small), then let
+    # glossary fill whatever remains of the budget.
+    lines: list[str] = []
+    non_glossary_chars = sum(
+        len(line) + 1 for label, entry_lines in sections if label != "Glossary" for line in entry_lines
+    )
+    glossary_budget = max(_KNOWLEDGE_CHAR_BUDGET - non_glossary_chars, 3000)
+    for label, entry_lines in sections:
         lines.append(f"## {label}")
-        for item in items[:20]:
-            if kind == "glossary":
-                lines.append(
-                    f"- {item.get('field_key', item.get('id'))}: {item.get('definition_th', '')}"
-                )
-            elif kind == "targets":
-                lines.append(f"- {item.get('name_th', '')}: {item.get('description_th', '')}")
-            else:
-                lines.append(
-                    f"- {item.get('from_table', '')} -> {item.get('to_table', '')} "
-                    f"ON {item.get('join_keys', '')}"
-                )
-    return "\n".join(lines) if lines else "(no knowledge entries yet)"
+        if label == "Glossary":
+            used = 0
+            dropped = 0
+            for line in entry_lines:
+                if used + len(line) + 1 > glossary_budget:
+                    dropped += 1
+                    continue
+                lines.append(line)
+                used += len(line) + 1
+            if dropped:
+                lines.append(f"- … (+{dropped} column entries omitted for prompt budget)")
+        else:
+            lines.extend(entry_lines)
+    return "\n".join(lines)
