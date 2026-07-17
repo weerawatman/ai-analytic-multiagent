@@ -32,7 +32,8 @@
 
 ## commits ที่เกี่ยวข้อง
 
-- (เติมหลัง push — ดู `git log` / ส่วนท้ายไฟล์นี้)
+- `df3a5f4` — `feat(phase-g): heartbeat, ratings, metric registry, eval harness; resolve O-2/O-3`
+- base ก่อนงานนี้: `d9c650e` (roadmap G→K docs)
 
 ## หมายเหตุ
 
