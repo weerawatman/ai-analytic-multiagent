@@ -25,6 +25,10 @@ class AgentState(BaseModel):
     sql_retry_count: int = 0
     sql_failed: bool = False
     sql_error: str = ""
+    # Which connector actually ran generated_sql ("fabric" | "postgres" | "") —
+    # downstream re-runs (quality_assembly sample rows) must target the same
+    # source, since the SQL dialect matches whichever source produced it.
+    sql_source: str = ""
 
     # Data Scientist outputs
     analysis_summary: str = ""

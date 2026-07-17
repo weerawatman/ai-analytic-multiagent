@@ -12,6 +12,11 @@ def test_build_quality_payload_from_state(monkeypatch) -> None:
     monkeypatch.setattr(
         "backend.app.services.quality_assembly.fabric_can_query", lambda: False
     )
+    # Both sources down — Fabric alone being down now falls back to Postgres
+    # (auto-fallback), so this "fully offline" case must force both.
+    monkeypatch.setattr(
+        "backend.app.services.quality_assembly.pg_can_query", lambda: False
+    )
     state = AgentState(
         thread_id="t1",
         mode="explore",
@@ -75,15 +80,15 @@ def test_sample_query_respects_row_count_guard(monkeypatch) -> None:
 
     monkeypatch.setattr(quality_assembly, "fabric_can_query", lambda: True)
 
-    def raise_exceeded(sql, settings=None):
+    def raise_exceeded(sql, source, settings=None):
         raise RowCountExceeded(estimated=999999, threshold=50000)
 
-    monkeypatch.setattr(quality_assembly, "enforce_row_count_threshold", raise_exceeded)
+    monkeypatch.setattr(quality_assembly, "enforce_row_count_threshold_for_source", raise_exceeded)
 
     def must_not_run(*args, **kwargs):
-        raise AssertionError("run_fabric_sql must not be reached when the guard rejects")
+        raise AssertionError("run_sql must not be reached when the guard rejects")
 
-    monkeypatch.setattr(quality_assembly, "run_fabric_sql", must_not_run)
+    monkeypatch.setattr(quality_assembly, "run_sql", must_not_run)
 
     state = AgentState(
         thread_id="t-guard",
@@ -102,12 +107,17 @@ def test_sample_query_runs_when_guard_passes(monkeypatch) -> None:
 
     monkeypatch.setattr(quality_assembly, "fabric_can_query", lambda: True)
     monkeypatch.setattr(
-        quality_assembly, "enforce_row_count_threshold", lambda sql, settings=None: 10
+        quality_assembly,
+        "enforce_row_count_threshold_for_source",
+        lambda sql, source, settings=None: 10,
     )
     monkeypatch.setattr(
         quality_assembly,
-        "run_fabric_sql",
-        lambda sql, *, mode="explore", max_rows=None: {"rows": [{"n": 1}], "columns": ["n"]},
+        "run_sql",
+        lambda sql, *, mode="explore", max_rows=None, source="fabric": {
+            "rows": [{"n": 1}],
+            "columns": ["n"],
+        },
     )
 
     state = AgentState(

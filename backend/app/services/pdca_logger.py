@@ -35,6 +35,7 @@ async def log_sql_failure(
     sql: str,
     error: str,
     retry_count: int,
+    source: str = "fabric",
 ) -> None:
     """Append one PDCA failure entry (call on every failed attempt, not only final)."""
     record = {
@@ -45,6 +46,7 @@ async def log_sql_failure(
         "sql": sql or "",
         "error": error or "",
         "retry_count": retry_count,
+        "source": source or "fabric",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     await asyncio.to_thread(_append_record, record)

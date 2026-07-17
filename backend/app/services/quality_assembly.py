@@ -10,10 +10,11 @@ from backend.app.services import backlog_store
 from backend.app.services.fabric_sql import (
     OFFLINE_SQL_MSG_TH,
     RowCountExceeded,
-    enforce_row_count_threshold,
+    enforce_row_count_threshold_for_source,
     fabric_can_query,
     format_query_preview,
-    run_fabric_sql,
+    pg_can_query,
+    run_sql,
 )
 
 SQL_FAILED_CEO_MSG_TH = (
@@ -22,15 +23,29 @@ SQL_FAILED_CEO_MSG_TH = (
 )
 
 
-def _run_sample_sql(sql: str, mode: str) -> dict[str, Any]:
+def _current_sql_source() -> str:
+    """Same resolution as data_analyst._current_sql_source — kept local so
+    tests that monkeypatch this module's `fabric_can_query` keep working."""
+    if fabric_can_query():
+        return "fabric"
+    if pg_can_query():
+        return "postgres"
+    return "offline"
+
+
+def _run_sample_sql(sql: str, mode: str, source: str) -> dict[str, Any]:
     """Sample-row query with the same pre-flight row-count guard as the DA path.
+
+    `source` must match the dialect `sql` was written in — pass
+    `state.sql_source` (the connector that actually ran this SQL) rather than
+    re-resolving fresh, since reachability may have changed since DA ran.
 
     Without the guard a fail-open in D1 would let quality assembly re-scan an
     oversized result here (DE review, Phase D). RowCountExceeded propagates to
     the caller, which renders a short note instead of sample rows.
     """
-    enforce_row_count_threshold(sql)
-    return run_fabric_sql(sql, mode=mode, max_rows=5)
+    enforce_row_count_threshold_for_source(sql, source)
+    return run_sql(sql, mode=mode, max_rows=5, source=source)
 
 
 def _extract_section(text: str, tag: str) -> str:
@@ -98,6 +113,10 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
     if confidence not in {"high", "medium", "low"}:
         confidence = "medium"
 
+    # Prefer the source that actually ran generated_sql — the SQL text matches
+    # that connector's dialect. Only re-resolve fresh when DA never set it.
+    source = getattr(state, "sql_source", "") or _current_sql_source()
+
     sample_preview = ""
     sample_ref = ""
     sql_failed = bool(getattr(state, "sql_failed", False))
@@ -105,12 +124,12 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         sample_preview = "(ข้ามตัวอย่างข้อมูล — SQL ยังรันไม่สำเร็จหลังลองปรับแล้ว)"
         sample_ref = "skipped_sql_failed"
     elif sql_primary:
-        if not fabric_can_query():
+        if source == "offline":
             sample_preview = f"({OFFLINE_SQL_MSG_TH})"
             sample_ref = "skipped_offline"
         else:
             try:
-                primary_result = _run_sample_sql(sql_primary, state.mode or "explore")
+                primary_result = _run_sample_sql(sql_primary, state.mode or "explore", source)
                 sample_preview = format_query_preview(primary_result)
                 sample_ref = "inline"
             except RowCountExceeded as exc:
@@ -124,10 +143,10 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         not sql_failed
         and sql_alternative
         and sql_alternative != sql_primary
-        and fabric_can_query()
+        and source != "offline"
     ):
         try:
-            alt_result = _run_sample_sql(sql_alternative, state.mode or "explore")
+            alt_result = _run_sample_sql(sql_alternative, state.mode or "explore", source)
             sample_preview += "\n\n--- Sanity check ---\n" + format_query_preview(alt_result)
         except Exception:
             pass
@@ -135,7 +154,7 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         not sql_failed
         and sql_alternative
         and sql_alternative != sql_primary
-        and not fabric_can_query()
+        and source == "offline"
     ):
         sample_preview += f"\n\n--- Sanity check ---\n({OFFLINE_SQL_MSG_TH})"
 

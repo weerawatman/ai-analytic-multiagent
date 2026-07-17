@@ -11,10 +11,13 @@ from typing import Any
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.logger import logger
 from backend.app.services.fabric_connector import FabricConnectionError, get_fabric_connector
+from backend.app.services.postgres_replica import get_postgres_connector
 from backend.app.services.sql_guard import SQLGuardError, validate_read_only_sql
 
 # Negative/positive reachability cache: (reachable: bool, expires_at: float)
 _reachability_cache: tuple[bool, float] | None = None
+# Same TTL-cache shape for the Postgres WH_Silver mirror (auto-fallback source).
+_pg_reachability_cache: tuple[bool, float] | None = None
 
 OFFLINE_SQL_MSG_TH = (
     "Fabric ไม่พร้อม (capacity pause / offline) — ข้ามการรัน SQL ใช้ discovery บนดิสก์ + draft SQL"
@@ -166,9 +169,15 @@ def build_count_guard_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS cnt FROM (\n{inner}\n) AS _guard_cnt"
 
 
-def estimate_row_count(sql: str, settings: Settings | None = None) -> int | None:
-    """Run pre-flight COUNT(*). Returns None on fail-open (guard itself broken)."""
-    settings = settings or get_settings()
+def _estimate_row_count_via(sql: str, exec_fn) -> int | None:
+    """Shared wrap/execute/parse logic for the pre-flight COUNT(*) guard.
+
+    `exec_fn(count_sql)` executes the wrapped COUNT query against whichever
+    connector the caller picked — Fabric-only (`estimate_row_count`) or a
+    dispatched source (`estimate_row_count_for_source`). Returns None on
+    fail-open (guard itself broken) so callers never block a valid question
+    because the guard mechanism failed.
+    """
     try:
         safe_sql = validate_read_only_sql(sql)
     except SQLGuardError as exc:
@@ -185,7 +194,7 @@ def estimate_row_count(sql: str, settings: Settings | None = None) -> int | None
 
     started = time.monotonic()
     try:
-        result = run_fabric_sql(count_sql, mode="row_count_guard", max_rows=1)
+        result = exec_fn(count_sql)
     except Exception as exc:
         logger.warning("Row-count guard fail-open (count query failed): %s", exc)
         return None
@@ -205,6 +214,13 @@ def estimate_row_count(sql: str, settings: Settings | None = None) -> int | None
 
     logger.info("Row-count pre-flight estimated=%s in %sms", estimated, elapsed_ms)
     return estimated
+
+
+def estimate_row_count(sql: str, settings: Settings | None = None) -> int | None:
+    """Run pre-flight COUNT(*) against Fabric. Returns None on fail-open."""
+    return _estimate_row_count_via(
+        sql, lambda count_sql: run_fabric_sql(count_sql, mode="row_count_guard", max_rows=1)
+    )
 
 
 async def estimate_row_count_async(sql: str, settings: Settings | None = None) -> int | None:
@@ -227,6 +243,38 @@ async def enforce_row_count_threshold_async(
     sql: str, settings: Settings | None = None
 ) -> int | None:
     return await asyncio.to_thread(enforce_row_count_threshold, sql, settings)
+
+
+def estimate_row_count_for_source(sql: str, source: str, settings: Settings | None = None) -> int | None:
+    """Run pre-flight COUNT(*) against whichever source is active ('fabric'|'postgres')."""
+    return _estimate_row_count_via(
+        sql, lambda count_sql: run_sql(count_sql, mode="row_count_guard", max_rows=1, source=source)
+    )
+
+
+async def estimate_row_count_for_source_async(
+    sql: str, source: str, settings: Settings | None = None
+) -> int | None:
+    return await asyncio.to_thread(estimate_row_count_for_source, sql, source, settings)
+
+
+def enforce_row_count_threshold_for_source(
+    sql: str, source: str, settings: Settings | None = None
+) -> int | None:
+    settings = settings or get_settings()
+    estimated = estimate_row_count_for_source(sql, source, settings)
+    if estimated is None:
+        return None
+    threshold = settings.fabric_row_count_threshold
+    if estimated > threshold:
+        raise RowCountExceeded(estimated=estimated, threshold=threshold)
+    return estimated
+
+
+async def enforce_row_count_threshold_for_source_async(
+    sql: str, source: str, settings: Settings | None = None
+) -> int | None:
+    return await asyncio.to_thread(enforce_row_count_threshold_for_source, sql, source, settings)
 
 
 def fabric_is_available() -> bool:
@@ -286,6 +334,68 @@ def fabric_can_query() -> bool:
     return fabric_is_reachable()
 
 
+def clear_pg_reachability_cache() -> None:
+    """Test helper — reset TTL cache."""
+    global _pg_reachability_cache
+    _pg_reachability_cache = None
+
+
+def mark_pg_unreachable() -> None:
+    global _pg_reachability_cache
+    ttl = get_settings().fabric_reachability_ttl_seconds
+    _pg_reachability_cache = (False, time.monotonic() + ttl)
+
+
+def mark_pg_reachable() -> None:
+    global _pg_reachability_cache
+    ttl = get_settings().fabric_reachability_ttl_seconds
+    _pg_reachability_cache = (True, time.monotonic() + ttl)
+
+
+def pg_is_reachable(*, force: bool = False) -> bool:
+    """Ping the Postgres replica with TTL cache — same shape as fabric_is_reachable."""
+    global _pg_reachability_cache
+    connector = get_postgres_connector()
+    if not connector.is_configured():
+        return False
+
+    now = time.monotonic()
+    if not force and _pg_reachability_cache is not None:
+        reachable, expires_at = _pg_reachability_cache
+        if now < expires_at:
+            return reachable
+
+    try:
+        connector.ping()
+        mark_pg_reachable()
+        return True
+    except Exception as exc:
+        logger.warning("Postgres replica reachability check failed: %s", exc)
+        mark_pg_unreachable()
+        return False
+
+
+def pg_can_query() -> bool:
+    """True only when SQL against the Postgres replica should be attempted."""
+    return pg_is_reachable()
+
+
+def get_active_sql_source() -> str:
+    """Which connector should execute SQL right now: 'fabric' | 'postgres' | 'offline'.
+
+    Fabric is always preferred; the Postgres WH_Silver mirror is the
+    auto-fallback when Fabric is unreachable/paused/disabled. Callers use this
+    to pick the SQL dialect *before* generating SQL (T-SQL vs PostgreSQL) —
+    the two dialects are not interchangeable, so the source must be decided
+    up front rather than translated after a query is already written.
+    """
+    if fabric_can_query():
+        return "fabric"
+    if pg_can_query():
+        return "postgres"
+    return "offline"
+
+
 def run_fabric_sql(sql: str, *, mode: str = "explore", max_rows: int | None = None) -> dict[str, Any]:
     connector = get_fabric_connector()
     if not connector.is_configured():
@@ -317,28 +427,78 @@ async def run_fabric_sql_async(
     return await asyncio.to_thread(run_fabric_sql, sql, mode=mode, max_rows=max_rows)
 
 
+def run_sql(
+    sql: str, *, mode: str = "explore", max_rows: int | None = None, source: str = "fabric"
+) -> dict[str, Any]:
+    """Dispatch a query to whichever source the caller decided on (get_active_sql_source()).
+
+    Callers must generate `sql` in the matching dialect *before* calling this
+    — Fabric (T-SQL) and Postgres are not interchangeable at the syntax level.
+    """
+    if source == "postgres":
+        connector = get_postgres_connector()
+        try:
+            result = connector.execute_read_only(sql, mode=mode, max_rows=max_rows or 20)
+            mark_pg_reachable()
+        except Exception:
+            mark_pg_unreachable()
+            raise
+        result["source"] = "postgres"
+        return result
+    result = run_fabric_sql(sql, mode=mode, max_rows=max_rows)
+    result["source"] = "fabric"
+    return result
+
+
+async def run_sql_async(
+    sql: str, *, mode: str = "explore", max_rows: int | None = None, source: str = "fabric"
+) -> dict[str, Any]:
+    return await asyncio.to_thread(run_sql, sql, mode=mode, max_rows=max_rows, source=source)
+
+
 async def get_fabric_schema_text_async(limit: int = 40) -> str:
     return await asyncio.to_thread(get_fabric_schema_text, limit)
 
 
-def get_fabric_schema_text(limit: int = 40) -> str:
-    connector = get_fabric_connector()
-    if not connector.is_configured():
-        return "(Fabric not configured — set FABRIC_* in .env)"
-    if not fabric_can_query():
-        return f"({OFFLINE_SQL_MSG_TH})"
-    try:
-        rows = connector.fetch_schema_summary(top_schemas=10)
-        mark_fabric_reachable()
-    except Exception as exc:
-        logger.warning("Live Fabric schema fetch failed: %s", exc)
-        mark_fabric_unreachable()
-        return f"(Fabric schema ไม่พร้อม: {type(exc).__name__} — ใช้ discovery บนดิสก์)"
+def _format_schema_rows(rows: list[dict[str, Any]], limit: int) -> str:
     lines = [
         f"- {r.get('table_schema')}.{r.get('table_name')} ({r.get('table_type')})"
         for r in rows[:limit]
     ]
     return "\n".join(lines) if lines else "(no tables found)"
+
+
+def get_fabric_schema_text(limit: int = 40) -> str:
+    """Schema summary text — Fabric preferred, Postgres replica auto-fallback.
+
+    The replica mirrors Fabric 1:1, so when Fabric is unreachable/paused the
+    schema listing still comes from live data instead of dropping straight to
+    the disk-cache-only message.
+    """
+    fabric_connector = get_fabric_connector()
+    pg_connector = get_postgres_connector()
+    if not fabric_connector.is_configured() and not pg_connector.is_configured():
+        return "(Fabric not configured — set FABRIC_* in .env)"
+
+    if fabric_can_query():
+        try:
+            rows = fabric_connector.fetch_schema_summary(top_schemas=10)
+            mark_fabric_reachable()
+            return _format_schema_rows(rows, limit)
+        except Exception as exc:
+            logger.warning("Live Fabric schema fetch failed: %s", exc)
+            mark_fabric_unreachable()
+
+    if pg_can_query():
+        try:
+            rows = pg_connector.fetch_schema_summary(top_schemas=10)
+            mark_pg_reachable()
+            return _format_schema_rows(rows, limit)
+        except Exception as exc:
+            logger.warning("Postgres replica schema fetch failed: %s", exc)
+            mark_pg_unreachable()
+
+    return f"({OFFLINE_SQL_MSG_TH})"
 
 
 def format_query_preview(result: dict[str, Any], max_rows: int = 5) -> str:

@@ -15,7 +15,8 @@ _STEP_PREFIX_RE = re.compile(r"^([A-Za-z_]+(?:\s+SQL)?):\s+")
 _EXC_TYPE_RE = re.compile(r"\b[A-Z][A-Za-z0-9_]*(?:Error|Exception)\b")
 _THAI_RE = re.compile(r"[\u0e00-\u0e7f]")
 _TECH_DETAIL_RE = re.compile(
-    r"ODBC|SQLSTATE|\[Microsoft\]|pyodbc|Traceback|HYT00|42S22|42000",
+    r"ODBC|SQLSTATE|\[Microsoft\]|pyodbc|Traceback|HYT00|42S22|42000"
+    r"|psycopg2|42703|57014|08006",
     re.IGNORECASE,
 )
 

@@ -195,7 +195,7 @@ async def test_loop_back_exactly_three_attempts(temp_storage, monkeypatch):
 async def test_fail_sql_attempt_logs_and_counts(temp_storage, monkeypatch, error):
     logged = []
 
-    async def capture(theme_id, user_prompt, sql, error, retry_count):
+    async def capture(theme_id, user_prompt, sql, error, retry_count, source="fabric"):
         logged.append(
             {
                 "theme_id": theme_id,
@@ -203,6 +203,7 @@ async def test_fail_sql_attempt_logs_and_counts(temp_storage, monkeypatch, error
                 "sql": sql,
                 "error": error,
                 "retry_count": retry_count,
+                "source": source,
             }
         )
 
@@ -281,12 +282,12 @@ async def test_data_analyst_retry_success_clears_sql_error(temp_storage, monkeyp
     monkeypatch.setattr(data_analyst, "llm", FixItLLM())
     monkeypatch.setattr(data_analyst, "read_trusted_layer", AsyncMock(return_value={"metrics": []}))
     monkeypatch.setattr(
-        data_analyst, "enforce_row_count_threshold_async", AsyncMock(return_value=10)
+        data_analyst, "enforce_row_count_threshold_for_source_async", AsyncMock(return_value=10)
     )
     monkeypatch.setattr(
         data_analyst,
-        "run_fabric_sql_async",
-        AsyncMock(return_value={"rows": [{"NETWR": 100}], "columns": ["NETWR"]}),
+        "run_sql_async",
+        AsyncMock(return_value={"rows": [{"NETWR": 100}], "columns": ["NETWR"], "source": "fabric"}),
     )
 
     state = AgentState(
@@ -327,12 +328,12 @@ async def test_trusted_retry_success_strips_prior_attempt_text(temp_storage, mon
         AsyncMock(return_value={"metrics": [{"metric_key": "total_sales", "theme": ""}]}),
     )
     monkeypatch.setattr(
-        data_analyst, "enforce_row_count_threshold_async", AsyncMock(return_value=10)
+        data_analyst, "enforce_row_count_threshold_for_source_async", AsyncMock(return_value=10)
     )
     monkeypatch.setattr(
         data_analyst,
-        "run_fabric_sql_async",
-        AsyncMock(return_value={"rows": [{"NETWR": 100}], "columns": ["NETWR"]}),
+        "run_sql_async",
+        AsyncMock(return_value={"rows": [{"NETWR": 100}], "columns": ["NETWR"], "source": "fabric"}),
     )
 
     state = AgentState(

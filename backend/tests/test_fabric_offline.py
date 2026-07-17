@@ -102,13 +102,16 @@ def test_format_schema_context_pack_uses_disk(temp_storage):
 
 def test_quality_skips_sql_when_offline(temp_storage, monkeypatch):
     monkeypatch.setattr(quality_assembly, "fabric_can_query", lambda: False)
+    # Both sources down — Fabric alone being down now falls back to Postgres
+    # (auto-fallback), so this "fully offline" case must force both.
+    monkeypatch.setattr(quality_assembly, "pg_can_query", lambda: False)
     called = {"n": 0}
 
     def boom(*a, **k):
         called["n"] += 1
         raise AssertionError("should not run SQL")
 
-    monkeypatch.setattr(quality_assembly, "run_fabric_sql", boom)
+    monkeypatch.setattr(quality_assembly, "run_sql", boom)
     state = AgentState(
         thread_id="t-off",
         mode="explore",
@@ -127,13 +130,16 @@ async def test_data_analyst_uses_discovery_and_skips_sql(temp_storage, monkeypat
     from backend.app.agents import data_analyst
 
     monkeypatch.setattr(data_analyst, "fabric_can_query", lambda: False)
+    # Both sources down — Fabric alone being down now falls back to Postgres
+    # (auto-fallback), so this "fully offline" case must force both.
+    monkeypatch.setattr(data_analyst, "pg_can_query", lambda: False)
     sql_calls = {"n": 0}
 
     async def boom_sql(*a, **k):
         sql_calls["n"] += 1
         raise AssertionError("no SQL")
 
-    monkeypatch.setattr(data_analyst, "run_fabric_sql_async", boom_sql)
+    monkeypatch.setattr(data_analyst, "run_sql_async", boom_sql)
 
     class FakeLLM:
         async def ainvoke(self, messages):

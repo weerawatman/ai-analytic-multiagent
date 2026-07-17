@@ -51,6 +51,32 @@ async def test_log_sql_failure_appends_every_attempt(temp_storage):
 
 
 @pytest.mark.anyio
+async def test_log_sql_failure_records_source(temp_storage):
+    """Postgres-fallback auto-fallback (Phase E) — PDCA entries must say which
+    connector produced the failing SQL, defaulting to 'fabric' when omitted."""
+    await pdca_logger.log_sql_failure(
+        theme_id="sales",
+        user_prompt="ยอดขาย",
+        sql="SELECT NETWR FROM VBRK",
+        error="timeout",
+        retry_count=1,
+    )
+    await pdca_logger.log_sql_failure(
+        theme_id="sales",
+        user_prompt="ยอดขาย",
+        sql="SELECT netwr FROM vbrk LIMIT 5",
+        error="connection refused",
+        retry_count=2,
+        source="postgres",
+    )
+
+    path = temp_storage / "logs" / "pdca_failures.jsonl"
+    records = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert records[0]["source"] == "fabric"
+    assert records[1]["source"] == "postgres"
+
+
+@pytest.mark.anyio
 async def test_concurrent_appends_produce_valid_jsonl(temp_storage):
     """Concurrent jobs append via threads — every line must stay valid JSON."""
     await asyncio.gather(

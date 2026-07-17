@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     # Seconds to remember a failed ping before retrying (avoid long timeouts on every query)
     fabric_reachability_ttl_seconds: int = 300
 
+    # PostgreSQL WH_Silver mirror — auto-fallback data source when Fabric is
+    # unreachable/paused (same data, mirrored 1:1). Distinct from the unused
+    # legacy postgres_* block below (kept only for the old conversation-store
+    # scaffold, never wired into any route).
+    pg_replica_host: str = ""
+    pg_replica_port: int = 5432
+    pg_replica_db: str = ""
+    pg_replica_user: str = ""
+    pg_replica_password: str = ""
+    pg_replica_connect_timeout: int = 10
+    pg_replica_query_timeout: int = 300
+
     # Ollama (native Windows defaults)
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5-coder:14b"
@@ -86,6 +98,10 @@ class Settings(BaseSettings):
     @property
     def consultant_is_enabled(self) -> bool:
         return self.consultant_enabled and bool(self.anthropic_api_key)
+
+    @property
+    def pg_replica_is_configured(self) -> bool:
+        return all([self.pg_replica_host, self.pg_replica_db, self.pg_replica_user])
 
     @property
     def database_url(self) -> str:

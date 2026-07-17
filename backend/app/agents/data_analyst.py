@@ -12,9 +12,10 @@ from backend.app.services.discovery_service import format_schema_context_pack
 from backend.app.services.fabric_sql import (
     OFFLINE_SQL_MSG_TH,
     RowCountExceeded,
-    enforce_row_count_threshold_async,
+    enforce_row_count_threshold_for_source_async,
     fabric_can_query,
-    run_fabric_sql_async,
+    pg_can_query,
+    run_sql_async,
 )
 from backend.app.services.pdca_logger import log_sql_failure
 
@@ -31,6 +32,39 @@ MAX_SQL_ATTEMPTS = 3
 # once an attempt succeeds they must be stripped so trusted summarize never
 # concatenates them into final_answer (Phase D residual, DA finding).
 _SQL_ATTEMPT_FAILED_LINE_RE = re.compile(r"^SQL_ATTEMPT_FAILED:.*(?:\n|$)", re.MULTILINE)
+
+# Postgres WH_Silver mirror — auto-fallback source. T-SQL and PostgreSQL are
+# not interchangeable at the syntax level (TOP vs LIMIT, GETDATE() vs NOW(),
+# bracket vs double-quote identifiers), so the active source must be decided
+# *before* the LLM writes SQL, not translated after the fact.
+_DIALECT_LABEL = {
+    "fabric": "Microsoft Fabric Data Warehouse (T-SQL / Synapse dialect)",
+    "postgres": "PostgreSQL (WH_Silver mirror — auto-fallback while Fabric is unreachable)",
+}
+_DIALECT_RULES = {
+    "fabric": (
+        "- T-SQL syntax: use TOP N (not LIMIT) to cap rows, GETDATE() for current time, "
+        "ISNULL() for null handling, [brackets] only if an identifier needs escaping"
+    ),
+    "postgres": (
+        "- PostgreSQL syntax: use LIMIT N (NOT TOP — TOP is invalid here), NOW() for current "
+        "time, COALESCE() for null handling, double-quote identifiers only if case-sensitive"
+    ),
+}
+
+
+def _current_sql_source() -> str:
+    """Resolve which connector should run SQL right now: 'fabric'|'postgres'|'offline'.
+
+    Reads the module-level (monkeypatchable) `fabric_can_query`/`pg_can_query`
+    rather than `fabric_sql.get_active_sql_source()` directly so tests that
+    patch this module's `fabric_can_query` keep working unchanged.
+    """
+    if fabric_can_query():
+        return "fabric"
+    if pg_can_query():
+        return "postgres"
+    return "offline"
 
 
 def strip_failed_attempt_lines(text: str) -> str:
@@ -68,7 +102,7 @@ settings = get_settings()
 
 llm = make_chat_ollama(model=settings.ollama_model_analyst or None, temperature=0)
 
-SYSTEM_PROMPT = """You are a Data Analyst on an AI Data Team connected to Microsoft Fabric Data Warehouse (T-SQL).
+SYSTEM_PROMPT = """You are a Data Analyst on an AI Data Team connected to {dialect_label}.
 
 {skill}
 
@@ -94,10 +128,11 @@ Trusted definitions (if any):
 {trusted_layer}
 
 Rules:
-- Generate ONLY SELECT queries (T-SQL for Fabric/Synapse)
+- Generate ONLY SELECT queries — dialect: {dialect_label}
+{dialect_rules}
 - Respond in Thai for business explanation; keep SQL in English
 - NEVER use unscoped SELECT * on large fact tables — require WHERE filters aligned to the question
-- Prefer TOP N when ranking; always scope by time/org when the question implies it
+- Always scope by time/org when the question implies it
 - ALWAYS include these sections:
   SQL: <primary query>
   ALT_SQL: <sanity check or alternative query>
@@ -150,18 +185,27 @@ def _classify_sql_error(error: BaseException | str) -> str:
     lower = text.lower()
     if isinstance(error, RowCountExceeded) or "เกินเกณฑ์" in text or "exceeds threshold" in lower:
         return "row_count"
-    if "Invalid column name" in text or "42S22" in text or "ชื่อคอลัมน์" in text:
+    if (
+        "Invalid column name" in text
+        or "42S22" in text
+        or "ชื่อคอลัมน์" in text
+        or "42703" in text  # Postgres undefined_column SQLSTATE
+        or ("column" in lower and "does not exist" in lower)  # psycopg2 UndefinedColumn text
+    ):
         return "invalid_column"
     if (
         "timeout" in lower
         or "timed out" in lower
         or "HYT00" in text
         or "เกินเวลา" in text
+        or "57014" in text  # Postgres query_canceled (statement_timeout)
     ):
         return "timeout"
     if (
         "connection" in lower
         or "login failed" in lower
+        or "could not connect" in lower  # psycopg2 OperationalError
+        or "08006" in text  # Postgres connection_failure SQLSTATE
         or "08001" in text
         or "08S01" in text
         or "เชื่อมต่อ" in text
@@ -224,11 +268,21 @@ async def _retry_sql_with_error(
     *,
     error_class: str | None = None,
     mode: str = "explore",
-) -> tuple[str, str]:
-    """Ask the LLM to fix SQL for the given error class; execute if a fix is produced."""
+) -> tuple[str, str, str]:
+    """Ask the LLM to fix SQL for the given error class; execute if a fix is produced.
+
+    Resolves the active source fresh (a Fabric failure just before this call
+    may have flipped the reachability cache to Postgres) so the retry's SQL
+    always targets the dialect it will actually run against. Returns
+    (content, fixed_sql, source_used).
+    """
+    source = _current_sql_source()
     klass = error_class or _classify_sql_error(error)
     guidance = _retry_guidance(klass, error)
     retry_prompt = f"""{guidance}
+
+Target SQL dialect: {_DIALECT_LABEL.get(source, _DIALECT_LABEL["fabric"])}
+{_DIALECT_RULES.get(source, _DIALECT_RULES["fabric"])}
 
 Original SQL:
 {sql}
@@ -241,18 +295,20 @@ Fix the SQL. Return corrected SQL only in a ```sql block."""
     fixed = _extract_sql(str(response.content))
     if not fixed:
         raise RuntimeError("Retry LLM did not return SQL")
-    await enforce_row_count_threshold_async(fixed)
-    result = await run_fabric_sql_async(fixed, mode=mode, max_rows=10)
+    await enforce_row_count_threshold_for_source_async(fixed, source)
+    result = await run_sql_async(fixed, mode=mode, max_rows=10, source=source)
     return (
         strip_failed_attempt_lines(content)
         + f"\n\nSQL_RETRY:\n{fixed}\n\nQUERY_RESULT:\n{result.get('rows', [])}",
         fixed,
+        result.get("source", source),
     )
 
 
 async def _execute_sql_with_guard(sql: str, mode: str) -> dict:
-    await enforce_row_count_threshold_async(sql)
-    return await run_fabric_sql_async(sql, mode=mode, max_rows=10)
+    source = _current_sql_source()
+    await enforce_row_count_threshold_for_source_async(sql, source)
+    return await run_sql_async(sql, mode=mode, max_rows=10, source=source)
 
 
 async def data_analyst_node(state: AgentState) -> dict:
@@ -279,6 +335,10 @@ async def data_analyst_node(state: AgentState) -> dict:
     mode_rules = TRUSTED_MODE_RULES if state.mode == "trusted" else EXPLORE_MODE_RULES
     skill = load_agent_skill("data_analyst")
     user_prompt = _last_user_prompt(state)
+    # Decided once up front: which connector/dialect this invocation targets.
+    source = _current_sql_source()
+    dialect_label = _DIALECT_LABEL.get(source, _DIALECT_LABEL["fabric"])
+    dialect_rules = _DIALECT_RULES.get(source, _DIALECT_RULES["fabric"])
 
     if state.mode == "trusted" and not relevant_metrics:
         no_trusted_msg = (
@@ -297,10 +357,10 @@ async def data_analyst_node(state: AgentState) -> dict:
     content = state.query_result if state.sql_error else ""
 
     # --- Produce SQL (fresh generation or error-class retry) ---
-    if state.sql_error and sql and fabric_can_query():
+    if state.sql_error and sql and source != "offline":
         try:
             content = content or state.query_result or ""
-            content, sql = await _retry_sql_with_error(
+            content, sql, used_source = await _retry_sql_with_error(
                 content,
                 sql,
                 state.sql_error,
@@ -315,13 +375,14 @@ async def data_analyst_node(state: AgentState) -> dict:
                 "query_result": content,
                 "sql_error": "",
                 "sql_failed": False,
+                "sql_source": used_source,
                 "step_errors": step_errors,
             }
         except Exception as e:
             return await _fail_sql_attempt(
-                state, content or state.query_result or "", sql, e, theme_id, user_prompt, step_errors
+                state, content or state.query_result or "", sql, e, theme_id, user_prompt, step_errors, source
             )
-    elif state.sql_error and sql and not fabric_can_query():
+    elif state.sql_error and sql and source == "offline":
         content = (state.query_result or "") + f"\n\nSQL_SKIPPED: {OFFLINE_SQL_MSG_TH}"
         content += f"\nDRAFT_SQL:\n{sql}"
         return {
@@ -348,6 +409,8 @@ async def data_analyst_node(state: AgentState) -> dict:
                 trusted_layer=trusted_text,
                 schema_info=state.schema_info,
                 mode_rules=mode_rules,
+                dialect_label=dialect_label,
+                dialect_rules=dialect_rules,
             ),
         },
     ] + [
@@ -372,7 +435,7 @@ async def data_analyst_node(state: AgentState) -> dict:
         step_errors.append(f"data_analyst: {e}")
 
     sql = _extract_sql(content) or sql
-    if sql and fabric_can_query():
+    if sql and source != "offline":
         try:
             result = await _execute_sql_with_guard(sql, state.mode)
             content += f"\n\nQUERY_RESULT:\n{result.get('rows', [])}"
@@ -383,12 +446,13 @@ async def data_analyst_node(state: AgentState) -> dict:
                 "query_result": content,
                 "sql_error": "",
                 "sql_failed": False,
+                "sql_source": result.get("source", source),
                 "step_errors": step_errors,
             }
         except Exception as e:
-            logger.exception("Fabric SQL execution failed")
+            logger.exception("SQL execution failed (source=%s)", source)
             return await _fail_sql_attempt(
-                state, content, sql, e, theme_id, user_prompt, step_errors
+                state, content, sql, e, theme_id, user_prompt, step_errors, source
             )
 
     if sql:
@@ -412,6 +476,7 @@ async def _fail_sql_attempt(
     theme_id: str,
     user_prompt: str,
     step_errors: list[str],
+    source: str = "fabric",
 ) -> dict:
     friendly = _friendly_sql_error(error)
     new_count = state.sql_retry_count + 1
@@ -423,6 +488,7 @@ async def _fail_sql_attempt(
         sql,
         f"{type(error).__name__}: {error}",
         new_count,
+        source=source,
     )
     sql_failed = new_count >= MAX_SQL_ATTEMPTS
     content = (content or "") + f"\n\nSQL_ATTEMPT_FAILED: {friendly}"
@@ -435,6 +501,7 @@ async def _fail_sql_attempt(
         "generated_sql": sql,
         "query_result": content,
         "sql_retry_count": new_count,
+        "sql_source": source,
         "sql_error": friendly,
         "sql_failed": sql_failed,
         "step_errors": step_errors,
