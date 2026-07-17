@@ -16,3 +16,5 @@ class ThemeScanResponse(BaseModel):
     total_tables_scanned: int | None = None
     themes: list[ThemeItem] = Field(default_factory=list)
     message: str | None = None
+    # Which live source produced the scan: 'fabric' | 'postgres' | 'cache'
+    source: str | None = None

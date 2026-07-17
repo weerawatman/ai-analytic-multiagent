@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections import defaultdict
@@ -13,7 +14,14 @@ from uuid import uuid4
 from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
 from backend.app.services.fabric_connector import FabricConnectionError, get_fabric_connector
+from backend.app.services.fabric_sql import (
+    fabric_can_query,
+    mark_fabric_unreachable,
+    mark_pg_unreachable,
+    pg_can_query,
+)
 from backend.app.services.local_paths import get_local_dir
+from backend.app.services.postgres_replica import get_postgres_connector
 
 DOMAIN_KEYWORDS: dict[str, list[str]] = {
     "sales": [
@@ -215,21 +223,72 @@ def save_cached_themes(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-async def scan_themes(*, use_llm: bool = True) -> dict[str, Any]:
-    """Scan Fabric schema and propose top 3 exploration themes."""
-    connector = get_fabric_connector()
-    if not connector.is_configured():
+def _fetch_scan_rows() -> tuple[list[dict[str, Any]], str, str]:
+    """Fetch schema rows from the first available source.
+
+    Returns (rows, source, database). Fabric is preferred; the Postgres
+    WH_Silver mirror is the auto-fallback when Fabric is paused/unreachable
+    (Phase F). Raises FabricConnectionError only when no live source worked.
+    """
+    fabric_connector = get_fabric_connector()
+    pg_connector = get_postgres_connector()
+
+    if not fabric_connector.is_configured() and not pg_connector.is_configured():
         raise FabricConnectionError(
             "Fabric not configured",
             "ยังไม่ได้ตั้งค่า Fabric ใน .env",
         )
 
-    rows = connector.fetch_schema_summary(top_schemas=30)
-    if not rows:
-        raise FabricConnectionError(
-            "No tables found in schema scan",
-            "ไม่พบตารางจาก schema scan",
-        )
+    if fabric_can_query():
+        try:
+            rows = fabric_connector.fetch_schema_summary(top_schemas=30)
+            if rows:
+                return rows, "fabric", fabric_connector.settings.fabric_database
+            logger.warning("Fabric schema scan returned no tables — trying Postgres mirror")
+        except Exception as exc:
+            logger.warning("Fabric schema scan failed, trying Postgres mirror: %s", exc)
+            mark_fabric_unreachable()
+
+    if pg_can_query():
+        try:
+            rows = pg_connector.fetch_schema_summary(top_schemas=30)
+            if rows:
+                return rows, "postgres", pg_connector.settings.pg_replica_db
+            logger.warning("Postgres mirror schema scan returned no tables")
+        except Exception as exc:
+            logger.warning("Postgres mirror schema scan failed: %s", exc)
+            mark_pg_unreachable()
+
+    raise FabricConnectionError(
+        "No live source available for schema scan (Fabric paused/unreachable, Postgres mirror unavailable)",
+        "Fabric ไม่พร้อม (capacity pause/offline) และ Postgres mirror ใช้ไม่ได้ — สแกน schema ไม่ได้ในตอนนี้",
+    )
+
+
+SCAN_SOURCE_MSG_TH: dict[str, str] = {
+    "postgres": "Fabric ไม่พร้อม — สแกนจาก Postgres mirror (WH_Silver) แทน",
+    "cache": "Fabric และ Postgres mirror ไม่พร้อม — ใช้ผลสแกนล่าสุดจาก cache บนดิสก์",
+}
+
+
+async def scan_themes(*, use_llm: bool = True) -> dict[str, Any]:
+    """Scan schema (Fabric preferred, Postgres mirror fallback) and propose top 3 themes.
+
+    When neither live source is available, reuse cached themes from disk with a
+    clear Thai warning instead of failing. Raises FabricConnectionError (-> 503)
+    only when there is no live source AND no cache.
+    """
+    try:
+        rows, source, database = await asyncio.to_thread(_fetch_scan_rows)
+    except FabricConnectionError as exc:
+        cached = load_cached_themes()
+        if cached:
+            logger.warning("Schema scan offline — reusing cached themes: %s", exc)
+            cached = dict(cached)
+            cached["source"] = "cache"
+            cached["message"] = SCAN_SOURCE_MSG_TH["cache"]
+            return cached
+        raise
 
     clusters = cluster_schema_rows(rows)
     themes = _heuristic_themes(clusters, limit=3)
@@ -239,9 +298,11 @@ async def scan_themes(*, use_llm: bool = True) -> dict[str, Any]:
 
     payload = {
         "scanned_at": _utc_now(),
-        "database": connector.settings.fabric_database,
+        "database": database,
         "total_tables_scanned": len(rows),
         "themes": themes,
+        "source": source,
+        "message": SCAN_SOURCE_MSG_TH.get(source),
     }
     return save_cached_themes(payload)
 
