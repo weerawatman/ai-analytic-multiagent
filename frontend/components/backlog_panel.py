@@ -36,6 +36,14 @@ def render_backlog_panel() -> None:
         with st.expander(f"{icon} {title[:40]}"):
             st.markdown(f"**Theme:** {item.get('theme') or '-'}")
             st.markdown(f"**สถานะ:** {STATUS_LABELS.get(item.get('status', 'new'), item.get('status'))}")
+            data_source = item.get("data_source")
+            if data_source:
+                source_label = {
+                    "fabric": "🟦 Fabric DW",
+                    "postgres": "🟨 Postgres mirror (สำรอง)",
+                    "offline": "⚪ Offline (draft — ไม่ได้รัน SQL)",
+                }.get(data_source, data_source)
+                st.markdown(f"**แหล่งข้อมูล:** {source_label}")
             if item.get("answer_summary_th"):
                 st.markdown(item["answer_summary_th"])
             if item.get("sql_primary"):

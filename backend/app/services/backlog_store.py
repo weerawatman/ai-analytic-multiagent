@@ -52,6 +52,9 @@ def create_item(payload: dict[str, Any]) -> dict[str, Any]:
         "unknowns": payload.get("unknowns", []),
         "questions_for_ba_da": payload.get("questions_for_ba_da", []),
         "sample_data_ref": payload.get("sample_data_ref", ""),
+        # Provenance (Phase F): which source produced the sample/answer —
+        # "fabric" | "postgres" (mirror fallback) | "offline".
+        "data_source": payload.get("data_source", ""),
         "status": payload.get("status", "new"),
         "ba_da_feedback": payload.get("ba_da_feedback", []),
         "created_at": payload.get("created_at", now),

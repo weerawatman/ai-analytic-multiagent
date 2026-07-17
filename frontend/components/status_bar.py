@@ -15,26 +15,36 @@ STATUS_ICONS = {
 
 
 def render_fabric_status() -> None:
-    """Show Fabric connection status in sidebar."""
-    st.subheader("Fabric DW")
+    """Show active data source (Fabric primary / Postgres fallback / offline) in sidebar."""
+    st.subheader("แหล่งข้อมูล (Data Source)")
     try:
-        data = get_json_allow_error("/api/v1/fabric/health")
-        if data.get("connected"):
-            st.success(f"เชื่อมต่อแล้ว · {data.get('database', '')}")
-        elif data.get("configured"):
-            detail = data.get("detail_th") or data.get("detail", "เชื่อมต่อไม่สำเร็จ")
+        data = get_json_allow_error("/api/v1/fabric/sources")
+        active = data.get("active_source", "offline")
+        fabric = data.get("fabric") or {}
+        pg = data.get("postgres_replica") or {}
+
+        if active == "fabric":
+            st.success(f"🟦 Fabric DW · {fabric.get('database') or ''}")
+        elif active == "postgres":
             st.warning(
-                "**โหมด Offline / Fabric pause**\n\n"
-                f"{detail}\n\n"
+                "🟨 **ใช้ฐานข้อมูลสำรอง (Postgres mirror)**\n\n"
+                f"{data.get('detail_th', '')}\n\n"
+                "ผลลัพธ์จะติดป้ายแหล่งข้อมูลกำกับเสมอ — เมื่อ Fabric กลับมา "
+                "ระบบสลับกลับให้อัตโนมัติ"
+            )
+        elif fabric.get("configured") or pg.get("configured"):
+            st.warning(
+                "⚪ **โหมด Offline** — Fabric และ Postgres mirror ไม่พร้อมทั้งคู่\n\n"
+                f"{data.get('detail_th', '')}\n\n"
                 "ยังใช้ได้: Explore จาก discovery บนดิสก์ · draft SQL "
                 "(ข้ามรันต่อคลัง) · Consultant · Team Memory / Knowledge"
             )
         else:
-            st.warning("ยังไม่ได้ตั้งค่า Fabric ใน .env")
+            st.warning("ยังไม่ได้ตั้งค่า Fabric / PG_REPLICA ใน .env")
     except httpx.ConnectError:
         st.error("Backend ไม่พร้อม — รัน .\\scripts\\run-backend.ps1 ก่อน")
     except Exception as exc:
-        st.error(f"ตรวจสอบ Fabric ไม่ได้: {exc}")
+        st.error(f"ตรวจสอบแหล่งข้อมูลไม่ได้: {exc}")
 
 
 def render_mode_selector() -> None:

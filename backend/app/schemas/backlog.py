@@ -47,6 +47,8 @@ class BacklogItemResponse(BaseModel):
     unknowns: list[str]
     questions_for_ba_da: list[str]
     sample_data_ref: str
+    # Provenance (Phase F) — "" for items created before the field existed.
+    data_source: str = ""
     status: str
     ba_da_feedback: list[dict[str, Any]]
     created_at: str

@@ -15,7 +15,10 @@ from backend.app.agents.quality_node import quality_assembly_node
 from backend.app.agents.state import AgentState
 from backend.app.core.llm import make_chat_ollama
 from backend.app.core.logger import logger
-from backend.app.services.quality_assembly import SQL_FAILED_CEO_MSG_TH
+from backend.app.services.quality_assembly import (
+    SQL_FAILED_CEO_MSG_TH,
+    data_source_label_th,
+)
 
 router_llm = make_chat_ollama(temperature=0)
 
@@ -136,6 +139,11 @@ async def summarize_node(state: AgentState) -> dict:
         return {"final_answer": SQL_FAILED_CEO_MSG_TH}
 
     parts: list[str] = []
+    # Provenance (Phase F): on the trusted/router path there is no
+    # quality_assembly banner, so the source label goes here — the CEO must
+    # know when numbers came from the Postgres fallback mirror, never silently.
+    if state.sql_source in ("fabric", "postgres"):
+        parts.append(f"แหล่งข้อมูล: {data_source_label_th(state.sql_source)}")
     if state.schema_info:
         parts.append(f"[Data Engineer]\n{state.schema_info}")
     if state.query_result:

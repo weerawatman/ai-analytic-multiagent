@@ -1,8 +1,8 @@
 # Phase F — Postgres WH_Silver Mirror (Auto-Fallback Data Source)
 
-> **สถานะ:** โค้ด auto-fallback (dispatch + dialect-aware DA) implement และ push แล้ว (`b6eb496`) — แต่พบประเด็นจริงระหว่าง live verification 2 จุด (ดูหัวข้อ "Deep Audit") ที่ต้องให้ **ทีมข้อมูล/DBA** ตรวจ/แก้ก่อน ถึงจะยืนยันว่าใช้งานจริงได้ปลอดภัย — เอกสารนี้คือ handoff ให้ทีมข้อมูลทำงานส่วนของเขาก่อน แล้วนำกลับมาให้ dev ทำงานฝั่งโค้ดต่อ (ดูหัวข้อ "งานฝั่งโค้ดที่เหลือ")
-> **ผู้ดำเนินการ:** ทีมข้อมูล/DBA ทำ D-1/D-2 ก่อน (checklist ด้านล่าง) → ส่งผลกลับ owner → owner ส่งต่อ dev ทำ "งานฝั่งโค้ดที่เหลือ"
-> **หลักการใหญ่:** Fabric capacity ไม่เสถียร — Postgres ที่ mirror ข้อมูลเดียวกัน (`fabric_WH_Silver` บน `172.16.0.70`) ใช้เป็น **auto-fallback** เมื่อ Fabric unreachable/paused เท่านั้น ไม่ใช่ตัวแทนถาวร — Fabric ยังเป็น source หลักเสมอ
+> **สถานะ:** งานฝั่งโค้ดทั้งหมดที่ทำได้โดยไม่ต้องรอทีมข้อมูล **เสร็จแล้ว** (auto-fallback `b6eb496` + รอบ hardening ล่าสุด: CAST guidance, numeric overlay, parity script, provenance labels, `/fabric/sources`, UI fallback state) — ยืนยันด้วย automated tests offline ทั้งชุด (207 tests ผ่าน) — **ยังไม่ถือว่า production-verified** จนกว่า (1) ทีมข้อมูล/DBA ปิด D-1/D-2 (2) รัน `scripts/verify_pg_parity.py` กับ live DB ซ้ำหลังแก้ (3) live E2E ผ่าน LLM จริง (ดู "Verification" ท้ายเอกสาร)
+> **ผู้ดำเนินการ:** ทีมข้อมูล/DBA ทำ D-1/D-2 (checklist ด้านล่าง) → รัน parity script ยืนยัน → live E2E
+> **หลักการใหญ่:** Fabric capacity ไม่เสถียร — Postgres ที่ mirror ข้อมูลเดียวกัน (`fabric_WH_Silver` บน `172.16.0.70`) ใช้เป็น **auto-fallback** เมื่อ Fabric unreachable/paused เท่านั้น ไม่ใช่ตัวแทนถาวร — Fabric ยังเป็น source หลักเสมอ และผลลัพธ์ทุกชิ้นติดป้ายแหล่งข้อมูล (provenance) เสมอ ไม่มี fallback แบบเงียบ
 
 ---
 
@@ -65,33 +65,57 @@
 
 ---
 
-## งานฝั่งโค้ดที่เหลือ (dev ทำต่อหลัง D-1/D-2 เสร็จ)
+## งานฝั่งโค้ด — สถานะล่าสุด
 
-1. เพิ่มคำแนะนำ CAST แบบ dialect-portable (`CAST(col AS DECIMAL(18,2))` ใช้ได้ทั้ง T-SQL และ PostgreSQL) ใน `data_analyst/SKILL.md` และ/หรือ `SYSTEM_PROMPT` (`backend/app/agents/data_analyst.py`) สำหรับคอลัมน์ที่ schema บอกว่าเป็น varchar แต่ใช้ aggregate/compare เชิงตัวเลข
-2. ถ้าทีมข้อมูลเลือกทาง (ข): เสริม schema context pack ให้ DA เห็นว่าคอลัมน์ไหนเป็น numeric จริงบน Postgres ตอน `source="postgres"` (ปัจจุบัน DA ใช้ discovery.json ของ Fabric ล้วนๆ ไม่ว่าจะรันจริงกับ source ไหน)
-3. เก็บ parity-check script ที่ใช้ตรวจรอบนี้ไว้เป็น `scripts/verify-pg-parity.py` ถ้า owner ต้องการรันซ้ำเป็นระยะ (กัน schema drift ระหว่าง Fabric/Postgres ในอนาคต)
-4. Live end-to-end ผ่าน LLM จริง — บล็อกอยู่ตอนนี้เพราะเครื่อง dev out-of-memory ตอนโหลด Ollama model (ไม่เกี่ยวกับโค้ด) รอ resource ว่างแล้วยิงคำถามจริงผ่าน `/api/v1/chat/` ตอน `FABRIC_SQL_ENABLED=false` ดูว่า LLM cast ถูกต้องจริงในทางปฏิบัติ
+1. ✅ **เสร็จ** — CAST guidance แบบ dialect-portable (`CAST(col AS DECIMAL(18,2))`) เพิ่มแล้วทั้งใน `data_analyst/SKILL.md` (หัวข้อ "Numeric CAST rule") และ `_DIALECT_RULES` ทั้งสอง dialect ใน `backend/app/agents/data_analyst.py` (`_CAST_GUIDANCE`) — มี test คุม (`test_provenance_and_cast.py`) — **ไม่ต้องรอ D-2** เพราะความเสี่ยง implicit-convert มีอยู่แล้วแม้ใช้ Fabric อย่างเดียว
+2. ✅ **กลไกเสร็จ, ข้อมูลรอ D-2** — numeric-column overlay: `backend/app/services/pg_numeric_overlay.py` อ่าน `data/local/knowledge/pg_numeric_columns.json` (fallback ไป `data/templates/pg_numeric_columns.template.json` ที่ seed ด้วย 6 คอลัมน์ VBRK ที่ตรวจ live แล้ว) → inject เข้า prompt DA เฉพาะตอน `source="postgres"` (ทั้ง fresh generation และ retry) — ทีมข้อมูลส่ง mapping ครบ 17 ตารางเมื่อไหร่ ให้วางไฟล์ที่ `data/local/knowledge/pg_numeric_columns.json` ได้เลย ไม่ต้องแก้โค้ด — ไฟล์เสีย/หายระบบ degrade เป็น overlay ว่าง ไม่พังเส้นทาง DA
+3. ✅ **เสร็จ** — parity script: `scripts/verify_pg_parity.py` (logic เปรียบเทียบอยู่ใน `backend/app/services/schema_parity.py` เพื่อให้ unit-test ได้ offline) — ตรวจ column names + NAMEDATALEN truncation suspects + row counts + type diffs (informational) — read-only ทั้งสองฝั่ง exit code 0/1/2 — รันซ้ำเป็นระยะกัน schema drift
+4. ⏳ **ยังบล็อก** — Live E2E ผ่าน LLM จริง (Ollama out-of-memory ฝั่งเครื่อง dev ไม่เกี่ยวกับโค้ด) — ดู checklist ใน "Verification"
+
+### เพิ่มเติมรอบ hardening (production-readiness — สอดคล้อง risk ในเอกสารนี้)
+
+- **Provenance labels** (กัน silent fallback / stale data โดยไม่รู้ตัว): `build_quality_payload` เพิ่ม `data_source` → รายงาน Explore แสดง "แหล่งข้อมูล: Fabric DW / Postgres mirror (สำรอง…) / Offline" — เส้นทาง Trusted (`summarize_node`) ติดป้ายเดียวกัน — backlog item เก็บ `data_source` ถาวร + แสดงใน backlog panel
+- **`GET /api/v1/fabric/sources`**: endpoint สถานะ active source + fabric/postgres_replica (configured/reachable/database — ไม่มี secrets) พร้อมข้อความไทย
+- **Streamlit sidebar**: เปลี่ยนจาก "Fabric DW" เป็น "แหล่งข้อมูล (Data Source)" — แสดง 3 สถานะชัดเจน: Fabric ปกติ (เขียว) / ใช้ Postgres mirror สำรอง (เหลือง + คำเตือน freshness) / Offline ทั้งคู่
 
 ---
 
-## Tests (เพิ่มแล้วในรอบ implement — ครอบคลุม mechanism แต่ไม่ครอบคลุม data-parity เพราะต้องใช้ live DB)
+## Tests
 
-| ไฟล์ | ครอบคลุม |
-|---|---|
-| `test_postgres_replica.py` | connector: is_configured, connect (readonly+statement_timeout), execute_read_only, fetch_schema_summary (LIMIT ไม่ใช่ TOP, กรอง system catalog) |
-| `test_sql_source_dispatch.py` | `get_active_sql_source`, reachability TTL cache, `run_sql` dispatch, row-count guard source-aware |
-| `test_data_analyst_postgres_fallback.py` | DA เขียน SQL ตรง dialect ตาม source, retry สลับ dialect กลางคัน, `_classify_sql_error` รู้จัก psycopg2/Postgres SQLSTATE |
-| ⏳ ยังไม่มี | test สำหรับ CAST guidance (รอ D-2 ตัดสินใจก่อนถึงจะเขียนได้ตรงจุด) |
+| ไฟล์ | ครอบคลุม | สถานะ |
+|---|---|---|
+| `test_postgres_replica.py` | connector: is_configured, connect (readonly+statement_timeout), execute_read_only, fetch_schema_summary (LIMIT ไม่ใช่ TOP, กรอง system catalog) | ✅ ผ่าน |
+| `test_sql_source_dispatch.py` | `get_active_sql_source`, reachability TTL cache, `run_sql` dispatch, row-count guard source-aware | ✅ ผ่าน |
+| `test_data_analyst_postgres_fallback.py` | DA เขียน SQL ตรง dialect ตาม source, retry สลับ dialect กลางคัน, `_classify_sql_error` รู้จัก psycopg2/Postgres SQLSTATE | ✅ ผ่าน |
+| `test_provenance_and_cast.py` | CAST guidance อยู่ใน SKILL.md + ทั้งสอง dialect rules, provenance labels (payload/report/backlog/summarize) ครบ fabric/postgres/offline, backward-compat กับ backlog เก่าที่ไม่มี `data_source` | ✅ ผ่าน (ใหม่) |
+| `test_pg_numeric_overlay.py` | overlay: local file > template fallback (VBRK seed), degrade เมื่อไฟล์เสีย/หาย, inject เข้า DA prompt เฉพาะ postgres (fresh + retry), ไม่ inject ตอน fabric | ✅ ผ่าน (ใหม่) |
+| `test_schema_parity.py` | comparison logic: NAMEDATALEN truncation detection (case จริงจาก CE1SATG), type diff แบบ informational (case จริงจาก VBRK), drift/missing tables, row-count mismatch, script ปฏิเสธรันเมื่อไม่มี credentials (exit 2) | ✅ ผ่าน (ใหม่) |
+| `test_sources_api.py` | `/api/v1/fabric/sources`: active source ทั้ง 3 สถานะ + ไม่ leak secrets (host/user/password/tenant) | ✅ ผ่าน (ใหม่) |
 
 ## Verification
-1. ✅ **ทำแล้ว**: parity check คอลัมน์+row count ทั้ง 17 ตาราง (live) — 16 OK, 1 มีสาเหตุชัดเจนรอ D-1
-2. ✅ **ทำแล้ว**: query จริงด้วยชื่อคอลัมน์จริงผ่าน Postgres connector สำเร็จ
-3. ⏳ รอทีมข้อมูลตอบ D-2 → เพิ่ม CAST guidance → `pytest backend/tests -q` ต้องผ่านหมด (174+ tests) + test ใหม่เฉพาะ CAST
-4. ⏳ รอ Ollama มี memory ว่าง → live E2E ผ่าน LLM จริงตอน Fabric ปิด → ตรวจ SQL ที่ generate จริงว่า cast ถูกและรันผ่าน Postgres
+
+**ยืนยันแล้ว (automated, offline — ไม่ต้องใช้ live DB):**
+1. ✅ `pytest backend/tests -q` → **207 passed** (174 เดิม + 33 ใหม่ Phase F) — คำสั่ง: `$env:PYTHONPATH="."; .\.venv\Scripts\python.exe -m pytest backend/tests -q`
+2. ✅ `python -m compileall frontend scripts backend/app` ผ่าน (frontend/scripts ไม่มี syntax error)
+3. ✅ (จากรอบก่อน, live) parity check คอลัมน์+row count ทั้ง 17 ตาราง — 16 OK, 1 รอ D-1
+4. ✅ (จากรอบก่อน, live) query จริงด้วยชื่อคอลัมน์จริงผ่าน Postgres connector สำเร็จ
+
+**ยังไม่ยืนยัน (manual gates — ห้าม claim ว่าเสร็จจนกว่าจะรันจริง):**
+
+5. ⏳ **ทีมข้อมูล/DBA**: ปิด D-1 (แก้ชื่อคอลัมน์ CE1SATG) + D-2 (ส่ง numeric-cast mapping ครบ 17 ตาราง + ยืนยัน freshness/รอบ sync)
+6. ⏳ **Parity re-run (live, read-only)** — หลัง D-1/D-2:
+   ```powershell
+   $env:PYTHONPATH="."; .\.venv\Scripts\python.exe scripts\verify_pg_parity.py --json data\local\exports\pg_parity.json
+   ```
+   ต้องได้ `RESULT: parity OK` (exit 0) — ถ้า drift ให้ส่งรายงาน JSON กลับทีมข้อมูล
+7. ⏳ **วาง D-2 mapping**: copy mapping เต็มไปที่ `data/local/knowledge/pg_numeric_columns.json` (รูปแบบตาม `data/templates/pg_numeric_columns.template.json`)
+8. ⏳ **Live fallback smoke (read-only)** — Fabric เปิดปกติ: เช็ค `GET /api/v1/fabric/sources` ว่า `active_source="fabric"` → ตั้ง `FABRIC_SQL_ENABLED=false` ชั่วคราว + restart backend → เช็คอีกครั้งว่า `active_source="postgres"` และ sidebar แสดงสถานะสำรองสีเหลือง → คืนค่าเดิม
+9. ⏳ **Live E2E ผ่าน LLM จริง** (รอ Ollama มี memory ว่าง): ตอน `FABRIC_SQL_ENABLED=false` ยิงคำถามยอดขายจริงผ่าน `POST /api/v1/chat/` → ตรวจว่า (ก) SQL ที่ generate เป็น PostgreSQL dialect + ใช้ `CAST(... AS DECIMAL(18,2))` กับคอลัมน์ varchar (ข) รันผ่าน Postgres สำเร็จ (ค) คำตอบสุดท้ายติดป้าย "แหล่งข้อมูล: Postgres mirror (สำรอง…)"
+10. ⏳ **Human gate (owner)**: ยอมรับ freshness policy ของ mirror (จากคำตอบ D-2 ข้อ 3) ก่อนถือว่า fallback เปิดใช้จริงใน production
 
 ---
 
 ## ความเสี่ยง / ข้อควรระวัง
 - **Type coercion asymmetry:** T-SQL อนุโลม implicit convert มากกว่า Postgres เสมอ — SQL ที่ผ่าน Fabric ไม่ได้แปลว่าจะผ่าน Postgres โดยอัตโนมัติ แม้ dialect syntax (TOP/LIMIT) จะแก้แล้วก็ตาม
-- **Schema drift:** ถ้ามีคน alter table ฝั่งใดฝั่งหนึ่งในอนาคตโดยไม่ sync อีกฝั่ง จะไม่มีระบบเตือนอัตโนมัติ (แนะนำเก็บ parity script ไว้รันเป็นระยะตามข้อ 3 ใน "งานฝั่งโค้ดที่เหลือ")
-- **Freshness ที่ยังไม่ยืนยัน:** ถ้า Postgres mirror sync ไม่บ่อยพอ คำตอบตอน fallback อาจมาจากข้อมูลเก่ากว่าที่ CEO คาดหวัง — ต้องรอคำตอบจากทีมข้อมูล (D-2 ข้อ 3)
+- **Schema drift:** ถ้ามีคน alter table ฝั่งใดฝั่งหนึ่งในอนาคตโดยไม่ sync อีกฝั่ง จะไม่มีระบบเตือนอัตโนมัติแบบ real-time — มี `scripts/verify_pg_parity.py` ให้รันเป็นระยะ (แนะนำก่อน/หลังทุกรอบ migrate ฝั่งใดฝั่งหนึ่ง)
+- **Freshness ที่ยังไม่ยืนยัน:** ถ้า Postgres mirror sync ไม่บ่อยพอ คำตอบตอน fallback อาจมาจากข้อมูลเก่ากว่าที่ CEO คาดหวัง — ต้องรอคำตอบจากทีมข้อมูล (D-2 ข้อ 3) — ระหว่างนี้ UI/รายงานติดป้ายเตือน "sync ล่าสุดอาจช้ากว่า Fabric" ทุกครั้งที่ใช้ fallback แล้ว (provenance label) เพื่อไม่ให้เข้าใจผิดว่าเป็นข้อมูลสด

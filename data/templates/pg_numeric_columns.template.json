@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "description": "Columns that are TRUE numeric types on the Postgres WH_Silver mirror (everything else is varchar, same as Fabric reports). Injected into the Data Analyst prompt only when the active source is the Postgres fallback. Fill in the remaining tables from the D-2 numeric-cast mapping delivered by the data/DBA team.",
+  "verified_note": "SAPHANADB.VBRK_All_Cleaned entries verified live against the mirror (Phase F deep audit); other tables pending D-2 confirmation.",
+  "tables": {
+    "SAPHANADB.VBRK_All_Cleaned": [
+      "Net_Value_In_Document_Currency",
+      "Tax_Amount_In_Document_Currency",
+      "Exchange_Rate_For_Postings_To_Financial_Accounting",
+      "Credit_Data_Exchange_Rate_At_Billing_Document_Rate",
+      "Exchange_Rate_For_Letter_Of_Credit_Procg_In_Foreign_Trade",
+      "UTC_Time_Stamp_In_Long_Form_Yyyymmddhhmmssmmmuuun"
+    ]
+  }
+}

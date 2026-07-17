@@ -22,6 +22,22 @@ SQL_FAILED_CEO_MSG_TH = (
     "กรุณาปรับคำถามให้เจาะจงขึ้น เช่น ระบุช่วงเวลา หรือหน่วยงานที่สนใจ"
 )
 
+# Provenance labels (Phase F) — the CEO must always see which source produced
+# the numbers, especially on the Postgres fallback where sync freshness is not
+# yet confirmed (D-2.3). Never fall back silently.
+DATA_SOURCE_LABEL_TH = {
+    "fabric": "Microsoft Fabric DW (แหล่งข้อมูลหลัก)",
+    "postgres": (
+        "Postgres mirror (ฐานข้อมูลสำรอง — Fabric ไม่พร้อมขณะรัน "
+        "ข้อมูลชุดเดียวกันแต่รอบ sync ล่าสุดอาจช้ากว่า Fabric)"
+    ),
+    "offline": "Offline — ไม่ได้รัน SQL จริง (draft จาก discovery บนดิสก์เท่านั้น)",
+}
+
+
+def data_source_label_th(source: str) -> str:
+    return DATA_SOURCE_LABEL_TH.get(source or "", DATA_SOURCE_LABEL_TH["offline"])
+
 
 def _current_sql_source() -> str:
     """Same resolution as data_analyst._current_sql_source — kept local so
@@ -213,6 +229,7 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         "questions_for_ba_da": questions,
         "sample_data_ref": sample_ref,
         "sample_preview": sample_preview,
+        "data_source": source,
         "sql_failed": sql_failed,
         "sql_retry_count": int(getattr(state, "sql_retry_count", 0) or 0),
         "sql_error": getattr(state, "sql_error", "") or "",
@@ -227,6 +244,10 @@ def format_explore_response_th(payload: dict[str, Any]) -> str:
         "🟡 **Draft · Explore** — รอ validate กับ BA/DA",
         "",
     ]
+    source = payload.get("data_source", "")
+    if source:
+        icon = {"fabric": "🟦", "postgres": "🟨", "offline": "⚪"}.get(source, "⚪")
+        lines += [f"{icon} **แหล่งข้อมูล:** {data_source_label_th(source)}", ""]
     if payload.get("sql_failed"):
         lines += [
             "### สถานะ SQL",

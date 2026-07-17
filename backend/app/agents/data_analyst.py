@@ -18,6 +18,7 @@ from backend.app.services.fabric_sql import (
     run_sql_async,
 )
 from backend.app.services.pdca_logger import log_sql_failure
+from backend.app.services.pg_numeric_overlay import format_pg_numeric_context
 
 # Single shared CEO-facing failure message (quality_assembly is the canonical
 # home); the old local name is kept as an alias for existing imports/tests.
@@ -41,16 +42,44 @@ _DIALECT_LABEL = {
     "fabric": "Microsoft Fabric Data Warehouse (T-SQL / Synapse dialect)",
     "postgres": "PostgreSQL (WH_Silver mirror — auto-fallback while Fabric is unreachable)",
 }
+# Most WH_Silver columns are physically varchar even when they hold numbers
+# (verified live: Fabric INFORMATION_SCHEMA reports every VBRK column as
+# varchar). T-SQL silently implicit-converts varchar in SUM()/AVG()/comparison;
+# PostgreSQL refuses and errors immediately. CAST(col AS DECIMAL(18,2)) is
+# valid in BOTH dialects, so SQL written with explicit casts survives a
+# mid-retry source flip unchanged.
+_CAST_GUIDANCE = (
+    "- Numeric safety: most WH_Silver columns are stored as varchar even when they contain "
+    "numbers. ALWAYS wrap columns in CAST(col AS DECIMAL(18,2)) before SUM/AVG/MIN/MAX, "
+    "arithmetic, or numeric comparison — unless the schema context explicitly marks that "
+    "column as a true numeric type. CAST(... AS DECIMAL(p,s)) works identically on both "
+    "T-SQL and PostgreSQL; never rely on implicit varchar-to-number conversion "
+    "(it happens to work on Fabric but fails hard on PostgreSQL)"
+)
 _DIALECT_RULES = {
     "fabric": (
         "- T-SQL syntax: use TOP N (not LIMIT) to cap rows, GETDATE() for current time, "
-        "ISNULL() for null handling, [brackets] only if an identifier needs escaping"
+        "ISNULL() for null handling, [brackets] only if an identifier needs escaping\n"
+        + _CAST_GUIDANCE
     ),
     "postgres": (
         "- PostgreSQL syntax: use LIMIT N (NOT TOP — TOP is invalid here), NOW() for current "
-        "time, COALESCE() for null handling, double-quote identifiers only if case-sensitive"
+        "time, COALESCE() for null handling, double-quote identifiers only if case-sensitive\n"
+        + _CAST_GUIDANCE
     ),
 }
+
+
+def _dialect_rules_for(source: str) -> str:
+    """Dialect rules block for the prompt — plus, on the Postgres fallback,
+    the D-2 numeric-column overlay (which mirror columns are truly numeric,
+    so the LLM knows what needs CAST and what does not)."""
+    rules = _DIALECT_RULES.get(source, _DIALECT_RULES["fabric"])
+    if source == "postgres":
+        overlay = format_pg_numeric_context()
+        if overlay:
+            rules = f"{rules}\n{overlay}"
+    return rules
 
 
 def _current_sql_source() -> str:
@@ -279,10 +308,11 @@ async def _retry_sql_with_error(
     source = _current_sql_source()
     klass = error_class or _classify_sql_error(error)
     guidance = _retry_guidance(klass, error)
+    dialect_rules = _dialect_rules_for(source)
     retry_prompt = f"""{guidance}
 
 Target SQL dialect: {_DIALECT_LABEL.get(source, _DIALECT_LABEL["fabric"])}
-{_DIALECT_RULES.get(source, _DIALECT_RULES["fabric"])}
+{dialect_rules}
 
 Original SQL:
 {sql}
@@ -338,7 +368,7 @@ async def data_analyst_node(state: AgentState) -> dict:
     # Decided once up front: which connector/dialect this invocation targets.
     source = _current_sql_source()
     dialect_label = _DIALECT_LABEL.get(source, _DIALECT_LABEL["fabric"])
-    dialect_rules = _DIALECT_RULES.get(source, _DIALECT_RULES["fabric"])
+    dialect_rules = _dialect_rules_for(source)
 
     if state.mode == "trusted" and not relevant_metrics:
         no_trusted_msg = (
