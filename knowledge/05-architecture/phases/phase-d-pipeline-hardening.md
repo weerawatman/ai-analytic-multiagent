@@ -1,6 +1,6 @@
 # Phase D — อุด Pipeline เดิม (Data Filtering, Row-Size Guard, Retry Loop, PDCA Logging)
 
-> **สถานะ:** implement แล้ว (2026-07-17) — HIGH + MED/LOW รอบแรกจาก QA commit เป็น `57e5cc9` แล้ว และแก้ residual findings รอบสอง (MED/LOW) ต่อจากนั้น; branch ล้ำหน้า origin/master (ยังไม่ push); manual Fabric verification (oversized query / ORDER BY) รอตอน capacity กลับมา แล้วให้ owner ตรวจความเรียบร้อยก่อนไป Phase E
+> **สถานะ:** implement แล้ว (2026-07-17) — HIGH + MED/LOW รอบแรกจาก QA commit เป็น `57e5cc9`, residual รอบสอง `dc2c9c3`, sweep รอบสาม (LOW) `f40784e`; **push ไป origin/master แล้ว** (HEAD ตรงกับ origin/master); audit ยืนยัน D1–D6 ครบตามแผนทุกข้อ (2026-07-17) — `pytest backend/tests -q` ผ่าน **146 passed**; manual Fabric verification (oversized query / ORDER BY / live timeout / live retry regression) ยังรอตอน capacity กลับมา แล้วให้ owner ตรวจความเรียบร้อยก่อนไป Phase E
 > **ผู้ดำเนินการ:** ทำตามลำดับ D1 → D6 (D2/D3 ผูกกันเป็น retry loop เดียว ควรทำคู่กัน), เขียน test ควบคู่ไปกับแต่ละข้อ ไม่ใช่ทำทีหลังทั้งหมด
 > **หลักการใหญ่:** เอกสารนี้คือ "เสาหลักที่ 1 (Data Pipeline & Memory) + เสาหลักที่ 2 (Agent Orchestration & PDCA Error Loop)" จาก 4 เสาหลักที่ owner ต้องการ integrate เข้าระบบ AI Data Team เดิม — เสาหลักที่ 3 (Sandboxed Execution) และ 4 (Model Persistence) อยู่นอกขอบเขตเอกสารนี้ ดู "Phase E" ท้ายเอกสารสำหรับ roadmap ระดับสถาปัตยกรรม (ยังไม่ลงรายละเอียด implementation — ออกแบบละเอียดหลัง Phase D ใช้งานจริงแล้ว เพราะ Phase E พึ่งพา infra ที่ Phase D สร้างโดยตรง)
 
@@ -97,7 +97,7 @@ async def log_sql_failure(theme_id: str, user_prompt: str, sql: str, error: str,
 
 ## Verification
 
-1. ✅ **ผ่านแล้ว (offline/pytest):** `pytest backend/tests -q` ผ่านทั้งหมด — ล่าสุด 139 passed (baseline 131 + เทสต์ residual round 2) รวม mock timeout test (ข้อ 4 แบบ mock) และ `ORDER BY` unit tests (ข้อ 5 แบบ unit) แล้ว
+1. ✅ **ผ่านแล้ว (offline/pytest):** `pytest backend/tests -q` ผ่านทั้งหมด — ล่าสุด 146 passed (เพิ่ม `test_error_sanitizer.py` จาก sweep round 3) รวม mock timeout test (ข้อ 4 แบบ mock) และ `ORDER BY` unit tests (ข้อ 5 แบบ unit) แล้ว
 2. ⏳ **รอ Fabric capacity — Manual oversized query:** ถามคำถามกว้างๆ ที่จะกวาดตารางใหญ่ทั้งตาราง (ไม่ระบุช่วงเวลา/เงื่อนไข) → เห็น COUNT(*) reject ทำงานจริง → DA ปรับ WHERE เองในรอบถัดไป (ไม่เกิน 3 รอบ) → ถ้ายังไม่ผ่านครบ 3 รอบ ต้องเห็นข้อความไทยสุภาพ ไม่ใช่ raw error → เปิด `data/local/logs/pdca_failures.jsonl` เช็คว่ามี entry ครบทุก attempt
 3. ⏳ **รอ Fabric capacity — Regression (live retry):** คำถามที่เคยพังเพราะ column name ผิด (เคสเดิมที่เคยมี auto-fix) ต้องยัง auto-fix ได้เหมือนเดิมภายใต้ retry counter ใหม่ ไม่ถอยหลัง
 4. ⏳ **รอ Fabric capacity — Timeout (ของจริง):** จำลอง LLM หรือ Fabric ช้าผิดปกติ → ยืนยัน job ไม่ค้างเกิน `chat_job_max_seconds` และ status ออกมาเป็น `failed` พร้อมข้อความชัดเจน (ฝั่ง mock ผ่านแล้วใน pytest)
