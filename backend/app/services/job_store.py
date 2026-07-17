@@ -179,3 +179,22 @@ def fail_orphaned_jobs() -> int:
             (_utc_now(),),
         )
         return cursor.rowcount
+
+
+def purge_old_terminal_jobs(older_than_days: int = 14) -> int:
+    """Delete terminal jobs (done/failed/cancelled) older than N days. Used by cleanup script."""
+    if older_than_days < 1:
+        raise ValueError("older_than_days must be >= 1")
+    from datetime import timedelta
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=int(older_than_days))).isoformat()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            DELETE FROM jobs
+            WHERE status IN ('done', 'failed', 'cancelled')
+              AND coalesce(finished_at, created_at) < ?
+            """,
+            (cutoff,),
+        )
+        return cursor.rowcount

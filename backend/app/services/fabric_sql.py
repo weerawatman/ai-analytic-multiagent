@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from typing import Any
 
-from backend.app.core.config import get_settings
+from backend.app.core.config import Settings, get_settings
 from backend.app.core.logger import logger
 from backend.app.services.fabric_connector import FabricConnectionError, get_fabric_connector
+from backend.app.services.sql_guard import SQLGuardError, validate_read_only_sql
 
 # Negative/positive reachability cache: (reachable: bool, expires_at: float)
 _reachability_cache: tuple[bool, float] | None = None
@@ -17,6 +19,102 @@ _reachability_cache: tuple[bool, float] | None = None
 OFFLINE_SQL_MSG_TH = (
     "Fabric ไม่พร้อม (capacity pause / offline) — ข้ามการรัน SQL ใช้ discovery บนดิสก์ + draft SQL"
 )
+
+# Trailing ORDER BY (and optional OFFSET/FETCH) — illegal inside a derived table without TOP.
+_TRAILING_ORDER_BY = re.compile(r"\s+ORDER\s+BY\b[\s\S]*$", re.IGNORECASE)
+
+
+class RowCountExceeded(Exception):
+    """Pre-flight COUNT(*) exceeded fabric_row_count_threshold."""
+
+    def __init__(self, estimated: int, threshold: int) -> None:
+        self.estimated = estimated
+        self.threshold = threshold
+        message = (
+            f"Estimated row count {estimated} exceeds threshold {threshold}. "
+            "Narrow the query with WHERE filters (date range, org unit, etc.)."
+        )
+        message_th = (
+            f"จำนวนแถวโดยประมาณ {estimated:,} เกินเกณฑ์ {threshold:,} — "
+            "กรุณาจำกัดด้วย WHERE (ช่วงเวลา/หน่วยงาน/เงื่อนไข)"
+        )
+        super().__init__(message)
+        self.message_th = message_th
+
+
+def strip_trailing_order_by(sql: str) -> str:
+    """Remove trailing ORDER BY so the query can be wrapped in a derived table."""
+    cleaned = sql.strip().rstrip(";").strip()
+    return _TRAILING_ORDER_BY.sub("", cleaned).strip()
+
+
+def build_count_guard_sql(sql: str) -> str:
+    """Wrap a single SELECT/WITH in COUNT(*) after stripping trailing ORDER BY."""
+    inner = strip_trailing_order_by(sql)
+    return f"SELECT COUNT(*) AS cnt FROM (\n{inner}\n) AS _guard_cnt"
+
+
+def estimate_row_count(sql: str, settings: Settings | None = None) -> int | None:
+    """Run pre-flight COUNT(*). Returns None on fail-open (guard itself broken)."""
+    settings = settings or get_settings()
+    try:
+        safe_sql = validate_read_only_sql(sql)
+    except SQLGuardError as exc:
+        logger.warning("Row-count guard skipped — SQL guard rejected query: %s", exc)
+        return None
+
+    try:
+        count_sql = build_count_guard_sql(safe_sql)
+        # Re-validate the wrapped form (still SELECT-only).
+        count_sql = validate_read_only_sql(count_sql)
+    except Exception as exc:
+        logger.warning("Row-count guard fail-open (wrap failed): %s", exc)
+        return None
+
+    started = time.monotonic()
+    try:
+        result = run_fabric_sql(count_sql, mode="row_count_guard", max_rows=1)
+    except Exception as exc:
+        logger.warning("Row-count guard fail-open (count query failed): %s", exc)
+        return None
+
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    rows = result.get("rows") or []
+    if not rows:
+        logger.warning("Row-count guard fail-open (empty count result) in %sms", elapsed_ms)
+        return None
+
+    raw = rows[0].get("cnt", next(iter(rows[0].values()), None))
+    try:
+        estimated = int(raw)
+    except (TypeError, ValueError):
+        logger.warning("Row-count guard fail-open (non-int count=%r) in %sms", raw, elapsed_ms)
+        return None
+
+    logger.info("Row-count pre-flight estimated=%s in %sms", estimated, elapsed_ms)
+    return estimated
+
+
+async def estimate_row_count_async(sql: str, settings: Settings | None = None) -> int | None:
+    return await asyncio.to_thread(estimate_row_count, sql, settings)
+
+
+def enforce_row_count_threshold(sql: str, settings: Settings | None = None) -> int | None:
+    """Estimate rows; raise RowCountExceeded when over threshold. None = fail-open."""
+    settings = settings or get_settings()
+    estimated = estimate_row_count(sql, settings)
+    if estimated is None:
+        return None
+    threshold = settings.fabric_row_count_threshold
+    if estimated > threshold:
+        raise RowCountExceeded(estimated=estimated, threshold=threshold)
+    return estimated
+
+
+async def enforce_row_count_threshold_async(
+    sql: str, settings: Settings | None = None
+) -> int | None:
+    return await asyncio.to_thread(enforce_row_count_threshold, sql, settings)
 
 
 def fabric_is_available() -> bool:

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     fabric_connection_timeout: int = 30
     fabric_query_timeout: int = 300
     fabric_max_rows: int = 100
+    # Pre-flight COUNT(*) threshold — reject oversized result sets before fetch (Phase D)
+    fabric_row_count_threshold: int = 50000
     # When false, skip all live SQL even if credentials are present (Fabric pause / offline Explore)
     fabric_sql_enabled: bool = True
     # Seconds to remember a failed ping before retrying (avoid long timeouts on every query)
@@ -46,7 +48,8 @@ class Settings(BaseSettings):
 
     # Timeouts
     ollama_timeout: int = 600
-    compose_http_timeout: int = 600
+    # Wall-clock cap for an entire chat job (graph + retries + consultant)
+    chat_job_max_seconds: int = 1200
 
     # Local storage
     data_local_dir: str = "data/local"

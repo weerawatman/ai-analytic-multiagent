@@ -14,6 +14,11 @@ from backend.app.services.fabric_sql import (
     run_fabric_sql,
 )
 
+SQL_FAILED_CEO_MSG_TH = (
+    "ทีม Data Analyst ลองปรับ SQL แล้ว 3 ครั้งแต่ยังไม่สำเร็จ "
+    "กรุณาปรับคำถามให้เจาะจงขึ้น เช่น ระบุช่วงเวลา หรือหน่วยงานที่สนใจ"
+)
+
 
 def _extract_section(text: str, tag: str) -> str:
     pattern = rf"{tag}:\s*(.*?)(?=\n[A-Z_]+:|$)"
@@ -82,7 +87,11 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
 
     sample_preview = ""
     sample_ref = ""
-    if sql_primary:
+    sql_failed = bool(getattr(state, "sql_failed", False))
+    if sql_failed:
+        sample_preview = "(ข้ามตัวอย่างข้อมูล — SQL ยังรันไม่สำเร็จหลังลองปรับแล้ว)"
+        sample_ref = "skipped_sql_failed"
+    elif sql_primary:
         if not fabric_can_query():
             sample_preview = f"({OFFLINE_SQL_MSG_TH})"
             sample_ref = "skipped_offline"
@@ -92,15 +101,26 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
                 sample_preview = format_query_preview(primary_result)
                 sample_ref = "inline"
             except Exception as exc:
-                sample_preview = f"(รัน SQL ไม่สำเร็จ: {exc})"
+                # Keep message short — never dump a full traceback into the CEO report.
+                sample_preview = f"(รัน SQL ไม่สำเร็จ: {type(exc).__name__})"
 
-    if sql_alternative and sql_alternative != sql_primary and fabric_can_query():
+    if (
+        not sql_failed
+        and sql_alternative
+        and sql_alternative != sql_primary
+        and fabric_can_query()
+    ):
         try:
             alt_result = run_fabric_sql(sql_alternative, mode=state.mode or "explore", max_rows=5)
             sample_preview += "\n\n--- Sanity check ---\n" + format_query_preview(alt_result)
         except Exception:
             pass
-    elif sql_alternative and sql_alternative != sql_primary and not fabric_can_query():
+    elif (
+        not sql_failed
+        and sql_alternative
+        and sql_alternative != sql_primary
+        and not fabric_can_query()
+    ):
         sample_preview += f"\n\n--- Sanity check ---\n({OFFLINE_SQL_MSG_TH})"
 
     last_question = ""
@@ -122,6 +142,15 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         if state.analysis_summary
         else ""
     )
+
+    if sql_failed:
+        answer_summary = SQL_FAILED_CEO_MSG_TH
+        confidence = "low"
+        if SQL_FAILED_CEO_MSG_TH not in unknowns:
+            unknowns = [SQL_FAILED_CEO_MSG_TH, *unknowns]
+    elif "SQL_ERROR:" in answer_summary or "Traceback" in answer_summary:
+        # Never leak raw exception strings into the CEO-facing summary.
+        answer_summary = answer_summary.split("SQL_ERROR:")[0].strip()[:500] or SQL_FAILED_CEO_MSG_TH
 
     payload = {
         "theme": state.theme or "",
@@ -149,6 +178,9 @@ def build_quality_payload(state: AgentState) -> dict[str, Any]:
         "questions_for_ba_da": questions,
         "sample_data_ref": sample_ref,
         "sample_preview": sample_preview,
+        "sql_failed": sql_failed,
+        "sql_retry_count": int(getattr(state, "sql_retry_count", 0) or 0),
+        "sql_error": getattr(state, "sql_error", "") or "",
         "status": "new",
     }
     return payload
@@ -159,6 +191,14 @@ def format_explore_response_th(payload: dict[str, Any]) -> str:
     lines = [
         "🟡 **Draft · Explore** — รอ validate กับ BA/DA",
         "",
+    ]
+    if payload.get("sql_failed"):
+        lines += [
+            "### สถานะ SQL",
+            f"⚠️ {SQL_FAILED_CEO_MSG_TH}",
+            "",
+        ]
+    lines += [
         "### สรุป",
         payload.get("answer_summary_th") or "-",
         "",

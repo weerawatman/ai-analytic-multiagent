@@ -15,6 +15,7 @@ from langchain_core.messages import HumanMessage
 
 from backend.app.agents.orchestrator import graph
 from backend.app.agents.state import AgentState
+from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
 from backend.app.schemas.chat import ChatRequest, ChatResponse
 from backend.app.services import chat_store, consultant_service, job_store
@@ -66,6 +67,8 @@ def _next_step(node: str, update: dict[str, Any], mode: str) -> str | None:
     if node == "router":
         return update.get("next_agent") or "data_analyst"
     if node == "data_analyst":
+        if update.get("sql_error") and not update.get("sql_failed"):
+            return "data_analyst"
         return "explore_critique" if mode == "explore" else "summarize"
     return {
         "de_context": "data_analyst",
@@ -194,6 +197,43 @@ def _build_chat_result(
     ).model_dump()
 
 
+async def _stream_chat_graph(job_id: str, request: ChatRequest) -> AgentState:
+    """Run the LangGraph stream and return the final AgentState."""
+    config = {"configurable": {"thread_id": request.thread_id}}
+    input_state = AgentState(
+        messages=[HumanMessage(content=request.message)],
+        thread_id=request.thread_id,
+        mode=request.mode,
+        theme=request.theme or "",
+        theme_id=request.theme_id or "",
+    )
+    job_store.update_job(job_id, current_step="prepare_context")
+
+    # Two stream modes: `updates` drives the step timeline (node names),
+    # `values` drives message persistence. Persisting from cumulative
+    # `values` snapshots is self-healing — per-step update payloads
+    # proved unreliable under long node latencies.
+    persisted_count = 0
+    async for stream_mode_name, chunk in graph.astream(
+        input_state.model_dump(), config=config, stream_mode=["updates", "values"]
+    ):
+        if stream_mode_name == "updates" and isinstance(chunk, dict):
+            for node_name, raw_update in chunk.items():
+                parts = raw_update if isinstance(raw_update, list) else [raw_update]
+                update: dict[str, Any] = {}
+                for part in parts:
+                    if isinstance(part, dict):
+                        update.update(part)
+                _record_step(job_id, node_name, update, request.mode)
+        elif stream_mode_name == "values" and isinstance(chunk, dict):
+            persisted_count = _persist_new_messages(
+                request, chunk.get("messages") or [], persisted_count
+            )
+
+    snapshot = await graph.aget_state(config)
+    return AgentState(**snapshot.values)
+
+
 async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
     try:
         async with thread_lock(request.thread_id):
@@ -214,39 +254,30 @@ async def _run_chat_job(job_id: str, request: ChatRequest) -> None:
                 theme=request.theme,
             )
 
-            config = {"configurable": {"thread_id": request.thread_id}}
-            input_state = AgentState(
-                messages=[HumanMessage(content=request.message)],
-                thread_id=request.thread_id,
-                mode=request.mode,
-                theme=request.theme or "",
-                theme_id=request.theme_id or "",
-            )
-            job_store.update_job(job_id, current_step="prepare_context")
+            max_seconds = get_settings().chat_job_max_seconds
+            try:
+                state = await asyncio.wait_for(
+                    _stream_chat_graph(job_id, request),
+                    timeout=max_seconds,
+                )
+            except asyncio.TimeoutError:
+                msg = (
+                    f"Chat job exceeded wall-clock limit "
+                    f"({max_seconds}s) — งานถูกหยุดเพื่อไม่ให้ค้าง"
+                )
+                logger.error("Chat job %s timed out after %ss", job_id, max_seconds)
+                job = job_store.get_job(job_id)
+                if job and job.get("current_step"):
+                    job_store.finish_step(job_id, job["current_step"], "failed", msg)
+                job_store.update_job(
+                    job_id,
+                    status="failed",
+                    error=msg,
+                    current_step=None,
+                    finished_at=_utc_now(),
+                )
+                return
 
-            # Two stream modes: `updates` drives the step timeline (node names),
-            # `values` drives message persistence. Persisting from cumulative
-            # `values` snapshots is self-healing — per-step update payloads
-            # proved unreliable under long node latencies.
-            persisted_count = 0
-            async for stream_mode_name, chunk in graph.astream(
-                input_state.model_dump(), config=config, stream_mode=["updates", "values"]
-            ):
-                if stream_mode_name == "updates" and isinstance(chunk, dict):
-                    for node_name, raw_update in chunk.items():
-                        parts = raw_update if isinstance(raw_update, list) else [raw_update]
-                        update: dict[str, Any] = {}
-                        for part in parts:
-                            if isinstance(part, dict):
-                                update.update(part)
-                        _record_step(job_id, node_name, update, request.mode)
-                elif stream_mode_name == "values" and isinstance(chunk, dict):
-                    persisted_count = _persist_new_messages(
-                        request, chunk.get("messages") or [], persisted_count
-                    )
-
-            snapshot = await graph.aget_state(config)
-            state = AgentState(**snapshot.values)
             consultant_note = None
             if not state.requires_approval and consultant_service.should_review(state):
                 job_store.append_step(job_id, "consultant_review")

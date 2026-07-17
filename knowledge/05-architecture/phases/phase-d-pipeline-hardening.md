@@ -1,6 +1,6 @@
 # Phase D — อุด Pipeline เดิม (Data Filtering, Row-Size Guard, Retry Loop, PDCA Logging)
 
-> **สถานะ:** วางแผนแล้ว (2026-07-17) — รอทีมงาน implement ตามเอกสารนี้ แล้วให้ตรวจสอบความเรียบร้อยอีกครั้งก่อนไปต่อ
+> **สถานะ:** implement แล้ว (2026-07-17) — pytest 112 passed; ยังไม่ commit/push; manual Fabric verification (oversized query / ORDER BY) รอตอน capacity กลับมา แล้วให้ owner ตรวจความเรียบร้อยก่อนไป Phase E
 > **ผู้ดำเนินการ:** ทำตามลำดับ D1 → D6 (D2/D3 ผูกกันเป็น retry loop เดียว ควรทำคู่กัน), เขียน test ควบคู่ไปกับแต่ละข้อ ไม่ใช่ทำทีหลังทั้งหมด
 > **หลักการใหญ่:** เอกสารนี้คือ "เสาหลักที่ 1 (Data Pipeline & Memory) + เสาหลักที่ 2 (Agent Orchestration & PDCA Error Loop)" จาก 4 เสาหลักที่ owner ต้องการ integrate เข้าระบบ AI Data Team เดิม — เสาหลักที่ 3 (Sandboxed Execution) และ 4 (Model Persistence) อยู่นอกขอบเขตเอกสารนี้ ดู "Phase E" ท้ายเอกสารสำหรับ roadmap ระดับสถาปัตยกรรม (ยังไม่ลงรายละเอียด implementation — ออกแบบละเอียดหลัง Phase D ใช้งานจริงแล้ว เพราะ Phase E พึ่งพา infra ที่ Phase D สร้างโดยตรง)
 

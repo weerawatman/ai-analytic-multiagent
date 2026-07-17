@@ -4,7 +4,7 @@ from langgraph.graph import END, StateGraph
 
 from backend.app.agents.business_analyst import business_analyst_node
 from backend.app.agents.context_nodes import de_context_node, prepare_context_node
-from backend.app.agents.data_analyst import data_analyst_node
+from backend.app.agents.data_analyst import MAX_SQL_ATTEMPTS, data_analyst_node
 from backend.app.agents.data_engineer import data_engineer_node
 from backend.app.agents.data_scientist import data_scientist_node, explore_critique_node
 from backend.app.agents.quality_node import quality_assembly_node
@@ -68,6 +68,19 @@ def approval_check(state: AgentState) -> str:
 
 
 def after_analyst(state: AgentState) -> str:
+    # Phase D — loop back to data_analyst while SQL errors remain and attempts remain.
+    if (
+        state.sql_error
+        and not state.sql_failed
+        and state.sql_retry_count < MAX_SQL_ATTEMPTS
+    ):
+        logger.info(
+            "SQL retry loop-back attempt=%s/%s thread=%s",
+            state.sql_retry_count,
+            MAX_SQL_ATTEMPTS,
+            state.thread_id,
+        )
+        return "retry_sql"
     if state.mode == "explore" and state.use_collaborative_flow:
         return "explore_critique"
     return "summarize" if state.mode == "trusted" else "explore_critique"
@@ -152,7 +165,11 @@ def build_graph() -> StateGraph:
     builder.add_conditional_edges(
         "data_analyst",
         after_analyst,
-        {"explore_critique": "explore_critique", "summarize": "summarize"},
+        {
+            "retry_sql": "data_analyst",
+            "explore_critique": "explore_critique",
+            "summarize": "summarize",
+        },
     )
 
     builder.add_conditional_edges(

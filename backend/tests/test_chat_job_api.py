@@ -166,3 +166,72 @@ async def test_onboarding_submit_requires_discovery(client: AsyncClient, temp_st
     response = await client.post("/api/v1/onboarding/no-such-theme/run")
     assert response.status_code == 400
     assert "discovery" in response.json()["detail"].lower()
+
+
+class SlowGraph(FakeGraph):
+    """Hangs until cancelled / timed out — used to exercise chat_job_max_seconds."""
+
+    async def astream(self, input_state, config=None, stream_mode=None):
+        await asyncio.sleep(3600)
+        if False:  # pragma: no cover — make this an async generator
+            yield ("values", {})
+
+
+async def test_chat_job_wall_clock_timeout(client: AsyncClient, temp_storage, monkeypatch):
+    job_store.init_jobs_db()
+    monkeypatch.setenv("CHAT_JOB_MAX_SECONDS", "1")
+    from backend.app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(job_runner, "graph", SlowGraph(_final_state()))
+    monkeypatch.setattr(
+        "backend.app.services.consultant_service.should_review", lambda state: False
+    )
+
+    response = await client.post(
+        "/api/v1/chat/",
+        json={"thread_id": "t-timeout", "message": "คำถามช้า", "mode": "explore"},
+    )
+    assert response.status_code == 202
+    job = await _poll_until_done(client, response.json()["job_id"], timeout=10.0)
+    assert job["status"] == "failed"
+    assert "wall-clock" in job["error"].lower() or "1200" in job["error"] or "limit" in job["error"].lower()
+    get_settings.cache_clear()
+
+
+async def test_chat_job_graceful_sql_failed_result(client: AsyncClient, temp_storage, monkeypatch):
+    """Final answer after exhausted SQL retries must be polite Thai — not raw traceback."""
+    from backend.app.services.quality_assembly import SQL_FAILED_CEO_MSG_TH
+
+    job_store.init_jobs_db()
+    final = AgentState(
+        thread_id="t-grace",
+        current_agent="business_analyst",
+        sql_failed=True,
+        sql_retry_count=3,
+        sql_error="ชื่อคอลัมน์ผิด",
+        final_answer=f"🟡 Draft\n\n### สถานะ SQL\n⚠️ {SQL_FAILED_CEO_MSG_TH}\n",
+        ba_summary=f"BUSINESS_SUMMARY:\n{SQL_FAILED_CEO_MSG_TH}",
+        quality_payload={
+            "agents_involved": ["data_analyst", "business_analyst"],
+            "quality_gaps": [],
+            "sql_failed": True,
+            "answer_summary_th": SQL_FAILED_CEO_MSG_TH,
+        },
+    ).model_dump()
+    monkeypatch.setattr(job_runner, "graph", FakeGraph(final))
+    monkeypatch.setattr(
+        "backend.app.services.consultant_service.should_review", lambda state: False
+    )
+
+    response = await client.post(
+        "/api/v1/chat/",
+        json={"thread_id": "t-grace", "message": "ยอดขายทั้งตาราง", "mode": "explore"},
+    )
+    assert response.status_code == 202
+    job = await _poll_until_done(client, response.json()["job_id"])
+    assert job["status"] == "done"
+    content = job["result"]["content"]
+    assert "ลองปรับ SQL แล้ว 3 ครั้ง" in content
+    assert "Traceback" not in content
+    assert "SQL_ERROR:" not in content

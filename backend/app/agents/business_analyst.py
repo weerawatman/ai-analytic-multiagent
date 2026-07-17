@@ -35,10 +35,15 @@ Analyst output:
 Scientist critique:
 {analysis_summary}
 
+SQL pipeline status:
+{sql_status}
+
 Rules:
 - Define metrics in plain Thai — mark as Draft
 - Align to KPI targets if present in knowledge
 - Frame so-what for executive decision
+- If SQL failed after retries: explain politely in Thai that the team could not complete the query,
+  ask the CEO to narrow the question (time range / org unit). NEVER paste raw exception/traceback.
 - Required sections:
 METRIC_DEFINITION:
 BUSINESS_SUMMARY:
@@ -47,11 +52,45 @@ KPI_ALIGNMENT:
 RECOMMENDATION:
 """
 
+SQL_FAILED_CEO_MSG_TH = (
+    "ทีม Data Analyst ลองปรับ SQL แล้ว 3 ครั้งแต่ยังไม่สำเร็จ "
+    "กรุณาปรับคำถามให้เจาะจงขึ้น เช่น ระบุช่วงเวลา หรือหน่วยงานที่สนใจ"
+)
+
 
 async def business_analyst_node(state: AgentState) -> dict:
     logger.info("Business Analyst agent invoked thread=%s", state.thread_id)
 
     skill = load_agent_skill("business_analyst")
+    sql_status = "ok"
+    if state.sql_failed:
+        sql_status = (
+            f"FAILED after {state.sql_retry_count} attempts. "
+            f"Last error (summary): {state.sql_error or '(none)'}. "
+            f"Tell the CEO: {SQL_FAILED_CEO_MSG_TH}"
+        )
+    elif state.step_errors:
+        sql_status = "warnings: " + "; ".join(state.step_errors[:5])
+
+    # When SQL fully failed, skip LLM and return a deterministic polite message
+    # so raw SQL_ERROR strings never reach the CEO narrative.
+    if state.sql_failed:
+        content = (
+            "METRIC_DEFINITION:\n(ยังไม่สามารถนิยามได้ — SQL รันไม่สำเร็จ)\n\n"
+            f"BUSINESS_SUMMARY:\n{SQL_FAILED_CEO_MSG_TH}\n\n"
+            "CEO_QUESTIONS:\n"
+            "- ต้องการดูช่วงเวลาใด (เช่น เดือนนี้ / ปีนี้)?\n"
+            "- ต้องการเจาะหน่วยงานหรือประเภทเอกสารใด?\n\n"
+            "KPI_ALIGNMENT:\n(ยังไม่มีผลลัพธ์)\n\n"
+            "RECOMMENDATION:\nปรับคำถามให้แคบลงแล้วถามใหม่ — ทีมจะลองรัน SQL อีกครั้ง"
+        )
+        return {
+            "messages": [AIMessage(content=content, name="business_analyst")],
+            "current_agent": "business_analyst",
+            "ba_summary": content,
+            "step_errors": [],
+        }
+
     messages = [
         {
             "role": "system",
@@ -65,6 +104,7 @@ async def business_analyst_node(state: AgentState) -> dict:
                 team_memory_context=state.team_memory_context or "(none)",
                 query_result=state.query_result[:3000] if state.query_result else "(none)",
                 analysis_summary=state.analysis_summary[:2000] if state.analysis_summary else "(none)",
+                sql_status=sql_status,
             ),
         },
     ] + [

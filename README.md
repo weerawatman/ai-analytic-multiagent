@@ -224,6 +224,34 @@ Owner sign-off: `knowledge/07-testing/sign-off.md` (Phase 1) · `knowledge/07-te
 
 ---
 
+## Local data cleanup (Phase D / prep for Phase E)
+
+Scratch files under `data/local/local_data/` (reserved for future parquet / job-scoped models), aged logs, and terminal chat jobs can be cleared safely:
+
+```powershell
+.\scripts\cleanup-local-data.ps1              # default: logs/jobs older than 14 days
+.\scripts\cleanup-local-data.ps1 -Days 7 -JobDays 30
+.\scripts\cleanup-local-data.ps1 -WhatIf      # dry-run
+```
+
+**Never deleted by this script:**
+
+| Path | Why |
+|------|-----|
+| `data/local/team_memory/` | Onboarding baseline |
+| `data/local/knowledge/` | Glossary, discovery, SQL reference |
+| `data/local/models/approved/` | Phase E promoted models (convention reserved now) |
+
+### Windows Task Scheduler (optional)
+
+1. Open **Task Scheduler** → Create Basic Task → trigger Daily (e.g. 03:00)
+2. Action: **Start a program**
+   - Program: `powershell.exe`
+   - Arguments: `-NoProfile -ExecutionPolicy Bypass -File "C:\Projects\ai-analytic-multiagent\scripts\cleanup-local-data.ps1"`
+   - Start in: `C:\Projects\ai-analytic-multiagent`
+
+---
+
 ## Architecture
 
 ```

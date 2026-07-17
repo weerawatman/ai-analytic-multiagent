@@ -25,8 +25,30 @@ def get_templates_dir(settings: Settings | None = None) -> Path:
     return path
 
 
+def get_local_data_dir(settings: Settings | None = None) -> Path:
+    """Scratch area for query exports / Phase E parquet & job-scoped models."""
+    path = get_local_dir(settings) / "local_data"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_approved_models_dir(settings: Settings | None = None) -> Path:
+    """Promoted models (Phase E) — never wiped by cleanup-local-data."""
+    path = get_local_dir(settings) / "models" / "approved"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+# Directories that cleanup-local-data.ps1 must never delete.
+CLEANUP_PRESERVE_RELATIVE = (
+    "team_memory",
+    "knowledge",
+    "models/approved",
+)
+
+
 def ensure_local_structure(settings: Settings | None = None) -> None:
-    """Create Phase 1+2 local storage folders."""
+    """Create Phase 1+2 (+ Phase D prep) local storage folders."""
     local = get_local_dir(settings)
     for name in (
         "backlog",
@@ -39,10 +61,13 @@ def ensure_local_structure(settings: Settings | None = None) -> None:
         "themes",
         "team_memory",
         "logs",
+        "local_data",  # Phase E scratch (parquet / job models) — convention only in Phase D
+        "models",
     ):
         (local / name).mkdir(parents=True, exist_ok=True)
 
     (local / "knowledge" / "themes").mkdir(parents=True, exist_ok=True)
+    (local / "models" / "approved").mkdir(parents=True, exist_ok=True)
 
     for rel, default in (
         ("semantic/trusted.json", '{"version": "1.0", "metrics": []}'),

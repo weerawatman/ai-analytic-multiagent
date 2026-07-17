@@ -21,6 +21,10 @@ class AgentState(BaseModel):
     # Data Analyst outputs
     generated_sql: str = ""
     query_result: str = ""
+    # Phase D — SQL retry / graceful degradation
+    sql_retry_count: int = 0
+    sql_failed: bool = False
+    sql_error: str = ""
 
     # Data Scientist outputs
     analysis_summary: str = ""
