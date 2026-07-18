@@ -479,7 +479,7 @@ flowchart TB
 | `Invalid client secret` | Use secret **Value**, not Secret ID |
 | Wrong tables / workspace | Copy connection string from the **correct** Warehouse; grant SP in that workspace |
 | `ODBC Driver 18` not found | `winget install Microsoft.msodbcsql.18` |
-| Ollama OOM | Use `qwen2.5-coder:7b` in `.env` temporarily |
+| Ollama OOM | Set `OLLAMA_MODEL` to a model that loads (e.g. `qwen2.5-coder:3b` or `1.5b`); restart backend; confirm with a short `/api/generate` smoke |
 | UI cannot reach API | `BACKEND_URL=http://127.0.0.1:8000` (not `http://backend:8000`) |
 
 ---
