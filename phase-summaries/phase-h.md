@@ -26,11 +26,11 @@
 
 - Live backfill timing evidence
 - Live owner-known event validation (synthetic ผ่านแล้วใน `test_historical_events_recall_three_cases`)
-- Owner commit + push
 
 ## commits ที่เกี่ยวข้อง
 
-- N/A จนกว่า owner จะ commit/push (ตามคำสั่ง — agent ไม่ commit)
+- `fde9a2f` — `feat(phase-h): analytics engine — detectors, snapshot store, refresh job, DS context`
+- pushed: 2026-07-18 → origin/master
 
 ## หมายเหตุ
 
