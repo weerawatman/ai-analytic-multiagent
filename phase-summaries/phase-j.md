@@ -21,7 +21,6 @@
 - Live: accuracy +10 / retry −30% / ranker AUC จริง (ต้องมี traffic + labels)
 - Owner ตัดสินใจ job kind สำหรับ lesson mining
 - เปิด embedding / sql-pattern context flags หลัง pull `nomic-embed-text`
-- Owner commit
 
 ## เกตที่ค้าง
 
@@ -30,7 +29,8 @@
 
 ## commits ที่เกี่ยวข้อง
 
-- ยังไม่ commit ในรอบนี้ (working tree) — base ก่อนงานนี้: `2525108` (Phase I)
+- `08f3af2` — `feat(phase-j): learning loops — embeddings, SQL patterns, lesson miner, insight ranker`
+- pushed: 2026-07-18 → origin/master
 
 ## หมายเหตุ
 
