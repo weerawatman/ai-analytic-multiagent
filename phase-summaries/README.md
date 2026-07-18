@@ -19,6 +19,7 @@
 
 | ไฟล์ | Phase |
 |------|--------|
+| [phase-i.md](phase-i.md) | Phase I — Proactive Insight Pipeline |
 | [phase-h.md](phase-h.md) | Phase H — Analytics Engine |
 | [phase-g.md](phase-g.md) | Phase G — Foundation |
 | [phase-f.md](phase-f.md) | Phase F — Postgres fallback |

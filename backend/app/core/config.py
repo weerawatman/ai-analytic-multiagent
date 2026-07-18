@@ -89,6 +89,16 @@ class Settings(BaseSettings):
     # Inject computed detector summary into DS prompt when snapshots exist
     analytics_context_in_prompt: bool = True
 
+    # Phase I — proactive insight pipeline (scheduler + narration). Default
+    # off: owner must opt in once Ollama capacity for nightly narration is
+    # confirmed available (single local instance, shared with chat/onboarding).
+    insight_pipeline_enabled: bool = False
+    insight_cron_hour: int = 2
+    insight_narrate_top_k: int = 8
+    insight_catchup_after_hours: int = 24
+    # Wall-clock cap for one full pipeline run (refresh + detectors + narrate top-K)
+    insight_pipeline_max_seconds: int = 1800
+
     # Anthropic external consultant (Claude)
     anthropic_api_key: str = ""
     consultant_enabled: bool = False

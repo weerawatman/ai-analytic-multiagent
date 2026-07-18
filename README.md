@@ -234,7 +234,7 @@ python -m pytest backend/tests/ -q
 
 Owner sign-off: `knowledge/07-testing/sign-off.md` (Phase 1) · `knowledge/07-testing/phase-2-sign-off.md` (Phase 2)
 
-Phase G→K roadmap: `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` · Phase G handoff: `phases/phase-g-foundation.md`
+Phase G→K roadmap: `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` · Phase G handoff: `phases/phase-g-foundation.md` · Phase H: `phases/phase-h-analytics-engine.md` · Phase I: `phases/phase-i-proactive-insights.md`
 
 ---
 
@@ -300,6 +300,58 @@ User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
 
 ---
 
+## Corporate AI System Alignment — ตำแหน่งใน AI Hub & Spoke
+
+ในภาพ **AI HUB & SPOKE — Corporate AI Ecosystem** ขององค์กร ระบบนี้คือ **CORPORATE LLM HUB** — ตรงกับโปรเจกต์ **"SAP Natural Language Query (Text-to-SQL)"** (Executive/Enterprise · LLM · ยาก/Strategic) **ไม่ใช่ Spoke เดิม และไม่ต้องตั้ง Spoke ใหม่**
+
+- **ตรงนิยาม Hub ทุกข้อ:** ข้อมูล SAP (`SAPHANADB` ผ่าน Fabric WH_Silver) → คำถามภาษาธรรมชาติ → T-SQL → insight พร้อม HITL governance และ provenance ทุกคำตอบ
+- **Phase G→K ขยายบทบาท Hub** จาก "Text-to-SQL ตอบคำถาม" เป็น "สมองกลางที่เรียนรู้เอง" — ตรงกับหน้าที่ Hub ในภาพ: *ศูนย์กลางเชื่อมทุก Spoke เพื่อแลกเปลี่ยนข้อมูลและความรู้ข้ามสายงาน*
+
+```mermaid
+flowchart TB
+    S1["Spoke 1: Production<br/>Analytics"]
+    S2["Spoke 2: QA/QC<br/>Computer Vision"]
+    S3["Spoke 3: HR<br/>LLM / RAG"]
+    S4["Spoke 4: Supply Chain<br/>Analytics"]
+    HUB["CORPORATE LLM HUB<br/>SAP Natural Language Query (Text-to-SQL)<br/>= โปรเจกต์นี้ (ai-analytic-multiagent)"]
+    S5["Spoke 5: Finance & Strategy<br/>LLM + Analytics · Backlog"]
+    S6["Spoke 6: Legal & Compliance<br/>LLM · Backlog"]
+    S7["Spoke 7: Commercial<br/>LLM · Backlog"]
+    S8["Spoke 8: R&D<br/>LLM · Backlog"]
+    S1 --- HUB
+    S2 --- HUB
+    S3 --- HUB
+    S4 --- HUB
+    HUB --- S5
+    HUB --- S6
+    HUB --- S7
+    HUB --- S8
+    HUB -. "sales/GP insights (theme แรก)" .-> S5
+    HUB -. "detectors / contribution reuse" .-> S1
+    style HUB fill:#1a2f5e,stroke:#e8862d,stroke-width:3px,color:#ffffff
+```
+
+### สิ่งที่ Hub ตัวนี้ส่งมอบให้ Spoke อื่นได้
+
+| ความสามารถของ Hub (มีแล้ว) | Spoke ที่ใช้ต่อได้ | หมายเหตุ |
+|---|---|---|
+| Text-to-SQL + HITL + provenance (🟦 fabric / 🟨 postgres / ⚪ offline) | ทุก Spoke | รากฐาน NLQ ตามนิยาม Hub ในภาพ |
+| Metric Registry — นิยาม KPI กลาง approved-only, render SQL แบบ deterministic (Phase G2) | **Spoke 5 Finance & Strategy** เป็นผู้ใช้แรก | theme ยอดขาย/GP จาก `CE1SATG` ป้อน backlog ของ Spoke 5 ได้ทันที |
+| Analytics engine — detectors / contribution / forecasting เป็น pure functions (Phase H) | **Spoke 1 Production**, Spoke 4 Supply Chain | ไม่มี dependency กับ SAP/Fabric — reuse กับ series อะไรก็ได้ |
+| Eval harness + phase gates + conformance tests (Phase G3, §4 guardrails) | ทุก Spoke ที่จะเริ่มโปรเจกต์ AI | template governance มาตรฐานเดียวกันทั้งองค์กร |
+
+### Mapping Phase G→K กับบทบาท Hub
+
+| Phase | บทบาทต่อ Corporate AI Ecosystem |
+|---|---|
+| **G** (เสร็จฝั่งโค้ด) | มาตรฐาน + ไม้บรรทัดของ Hub: metric registry, eval baseline, heartbeat UX, feedback capture |
+| **H** (เสร็จฝั่งโค้ด) | สมองสถิติของ Hub: อ่านข้อมูลเองด้วยคณิตศาสตร์จริง ไม่ใช่ prompt text |
+| **I** | Hub ทำงาน proactive — ตื่นเช้ามาเจอ "เมื่อคืนระบบพบอะไร" โดยไม่ต้องถาม |
+| **J** | Hub เรียนรู้จาก feedback ของทุก Spoke — เก่งขึ้นแบบวัดได้เทียบ baseline |
+| **K** | World-class layer: board digest, role curriculum — Hub เป็นทีมมืออาชีพที่พัฒนาตัวเอง |
+
+---
+
 ## Key API endpoints
 
 | Method | Path | Description |
@@ -328,6 +380,10 @@ User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
 | `POST` | `/api/v1/analytics/refresh` | Enqueue `snapshot_refresh` job (202) |
 | `GET` | `/api/v1/analytics/detectors/summary` | Detector summary for DS context |
 | `POST` | `/api/v1/chat/rating` | 👍/👎 answer rating (Phase G1b) |
+| `GET` | `/api/v1/insights/` | List proactive insights (Phase I) |
+| `GET` | `/api/v1/insights/status` | Insight status counts + feedback stats |
+| `POST` | `/api/v1/insights/refresh` | Enqueue `insight_pipeline` job (202) |
+| `POST` | `/api/v1/insights/{id}/feedback` | 👍/👎/⚠️ feedback on an insight |
 | `POST` | `/api/v1/approval/` | Approve semantic layer updates |
 
 ---
@@ -343,6 +399,7 @@ User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
 │   └── schemas/
 ├── frontend/
 │   ├── app.py            # Streamlit main
+│   ├── pages/            # Multipage — insights.py (Phase I proactive feed)
 │   └── components/       # theme, backlog, promotion, validation panels
 ├── data/
 │   ├── templates/        # backlog + semantic JSON templates (committed)

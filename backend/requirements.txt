@@ -22,3 +22,5 @@ pandas==2.3.3
 scipy==1.18.0
 # statsmodels is optional (STL/ETS) — import-guarded; install when cp314 wheel available:
 #   pip install statsmodels==0.14.6
+# Phase I proactive insight pipeline scheduler (pure Python, no C extension — cp314 safe)
+apscheduler==3.11.0

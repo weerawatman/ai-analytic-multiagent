@@ -16,6 +16,7 @@ from backend.app.api.routes import (
     eval as eval_routes,
     fabric,
     feedback,
+    insights,
     jobs,
     knowledge,
     metrics,
@@ -28,7 +29,9 @@ from backend.app.api.routes import (
 )
 from backend.app.core.config import get_settings
 from backend.app.core.logger import logger
+from backend.app.services import scheduler_service
 from backend.app.services.chat_store import init_chat_db
+from backend.app.services.insight_store import init_insight_tables
 from backend.app.services.job_store import fail_orphaned_jobs, init_jobs_db
 from backend.app.services.local_paths import ensure_local_structure
 from backend.app.services.snapshot_store import init_analytics_db
@@ -41,11 +44,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     init_chat_db()
     init_jobs_db()
     init_analytics_db()
+    init_insight_tables()
     orphaned = fail_orphaned_jobs()
     if orphaned:
         logger.warning("Marked %d orphaned job(s) from a previous run as failed", orphaned)
     logger.info("Local storage initialized (SQLite + JSON + analytics.db)")
+    scheduler_service.start()
     yield
+    scheduler_service.shutdown()
     logger.info("Shutting down AI Analytics Multi-Agent System")
 
 
@@ -83,6 +89,7 @@ app.include_router(chat.router, prefix="/api/v1")
 app.include_router(ratings.router, prefix="/api/v1")
 app.include_router(metrics.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(insights.router, prefix="/api/v1")
 app.include_router(eval_routes.router, prefix="/api/v1")
 app.include_router(approval.router, prefix="/api/v1")
 app.include_router(fabric.router, prefix="/api/v1")

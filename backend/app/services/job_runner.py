@@ -951,3 +951,99 @@ async def _run_snapshot_refresh_job(
                 await hb_task
             except (asyncio.CancelledError, Exception):
                 pass
+
+
+def start_insight_pipeline_job(
+    *,
+    theme_id: str | None = None,
+    top_k: int | None = None,
+) -> dict[str, Any]:
+    """Enqueue the proactive insight pipeline (Phase I) — single-slot job."""
+    thread_id = "analytics:insight_pipeline"
+    existing = job_store.find_active_job("insight_pipeline", thread_id)
+    if existing is not None:
+        raise JobConflictError(existing)
+
+    job = job_store.create_job(
+        "insight_pipeline",
+        thread_id,
+        question=f"insight_pipeline:{theme_id or 'all'}",
+        params={"theme_id": theme_id, "top_k": top_k},
+    )
+    _track(
+        job["id"],
+        asyncio.create_task(_run_insight_pipeline_job(job["id"], theme_id=theme_id, top_k=top_k)),
+    )
+    return job
+
+
+async def _run_insight_pipeline_job(
+    job_id: str,
+    *,
+    theme_id: str | None,
+    top_k: int | None,
+) -> None:
+    from backend.app.services import insight_pipeline
+
+    hb_task: asyncio.Task | None = None
+    current: dict[str, str | None] = {"step": None}
+    try:
+        _mark_job_running(job_id)
+        hb_task = asyncio.create_task(_heartbeat_loop(job_id))
+        max_seconds = get_settings().insight_pipeline_max_seconds
+
+        def _step_cb(name: str) -> None:
+            if current["step"]:
+                job_store.finish_step(job_id, current["step"], "done")
+            job_store.append_step(job_id, name)
+            current["step"] = name
+
+        try:
+            result = await asyncio.wait_for(
+                insight_pipeline.run_insight_pipeline(
+                    theme_id=theme_id, top_k=top_k, step_cb=_step_cb
+                ),
+                timeout=max_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Insight pipeline job %s timed out after %ss", job_id, max_seconds)
+            _fail_job_on_timeout(job_id, max_seconds)
+            return
+
+        if current["step"]:
+            job_store.finish_step(job_id, current["step"], "done")
+        note = (
+            f"{result.get('published', 0)} published · {result.get('suppressed', 0)} suppressed · "
+            f"{result.get('candidates_total', 0)} candidates"
+        )
+        job_store.update_job(
+            job_id,
+            status="done",
+            result=result,
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        logger.info("Insight pipeline job %s done: %s", job_id, note)
+    except asyncio.CancelledError:
+        job_store.update_job(
+            job_id,
+            status="cancelled",
+            error="Job was cancelled",
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        raise
+    except Exception as e:
+        logger.exception("Insight pipeline job %s failed", job_id)
+        if current["step"]:
+            job_store.finish_step(
+                job_id, current["step"], "failed", f"ขั้นตอนนี้ทำงานไม่สำเร็จ ({type(e).__name__})"
+            )
+        _fail_job_on_error(job_id, e)
+    finally:
+        if hb_task is not None:
+            hb_task.cancel()
+            try:
+                await hb_task
+            except (asyncio.CancelledError, Exception):
+                pass
