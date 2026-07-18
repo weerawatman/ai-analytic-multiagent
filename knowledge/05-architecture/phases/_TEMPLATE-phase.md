@@ -60,3 +60,17 @@
 ## ผลเทสต์ / หลักฐานแนบท้าย
 
 {วางผล pytest จริง + commit hashes + หลักฐานเกณฑ์สำเร็จ}
+
+---
+
+## Documentation / Handover checklist
+
+ก่อนปิด phase หรือส่งมอบ session ถัดไป — ดู `AGENTS.md` → **Documentation & Handover Contract**
+
+- [ ] Gate artifact ใน `gates/` (หรือ sign-off ที่เกี่ยวข้อง) มีหลักฐานจริง
+- [ ] `phase-summaries/phase-{x}.md` อัปเดตตาม `phase-summaries/README.md` (แยก code-complete vs production-verified)
+- [ ] Commit hash ใน phase summary **หลัง push** แล้ว
+- [ ] `PROJECT_OVERVIEW.md` — วันที่/header commit, §3 readiness, §11 remaining work, §15 handover ตรงความจริง
+- [ ] `README.md` — install/run/env ยังถูก (ถ้า phase แตะส่วนนั้น)
+- [ ] `docs/diagrams/SYSTEM_DIAGRAMS.md` — อัปเดต diagram ที่เกี่ยวข้องถ้า phase เปลี่ยน architecture/flows (ระบุ section ที่แตะ เช่น §6–§7); ถ้ายังไม่อัปเดต ให้บันทึก diagram debt ใน phase summary
+- [ ] ไม่ขัดกันระหว่าง phase doc, gate, overview, summary, diagrams, และ `test_roadmap_conformance.py`

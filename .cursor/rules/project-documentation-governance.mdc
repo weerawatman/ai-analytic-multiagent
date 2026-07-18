@@ -1,0 +1,36 @@
+---
+description: Keep PROJECT_OVERVIEW, phase summaries, README, and system diagrams in sync when the system changes
+alwaysApply: true
+---
+
+# Documentation & handover governance
+
+**Source of truth:** `AGENTS.md` → **Documentation & Handover Contract**
+
+Context docs (read when changing behavior, phases, or gates):
+
+- `PROJECT_OVERVIEW.md` — status, architecture, remaining work, handover §15
+- `docs/diagrams/SYSTEM_DIAGRAMS.md` — Mermaid flows/architecture (mandatory handover artifact)
+- `phase-summaries/README.md` — per-phase summary template
+- `phase-summaries/phase-{x}.md` — one file per closed/partial phase
+
+## Before finishing work
+
+If you changed runtime code, APIs, phases, gates, tests, or verification status:
+
+1. **Honesty:** separate **code-complete** (pytest green) from **production-verified** (live + owner evidence). Never claim live verification from tests alone.
+2. **Phase summary:** create/update `phase-summaries/phase-{x}.md` — สิ่งที่ทำแล้ว, งานคงเหลือ, เกตที่ค้าง, commits (hash **after push**), วันที่.
+3. **Overview:** update `PROJECT_OVERVIEW.md` header commit/date; §3 readiness, §11 remaining work, §15 handover when relevant.
+4. **Diagrams:** if flows, architecture, agent graph, job kinds, data-source fallback, insight/learning/digest pipelines, or phase readiness changed — update relevant section(s) in `docs/diagrams/SYSTEM_DIAGRAMS.md` in the same change set; note diagram debt if deferred.
+5. **README:** sync install/run/env if those paths changed; link to overview for deep context.
+6. **Phase doc + gate:** G–K work also updates `knowledge/05-architecture/phases/` and `gates/` per roadmap §4.
+
+## Before phase handover
+
+- [ ] Phase doc DoD + gate (or sign-off) have real evidence
+- [ ] Phase summary matches gate/overview (no invented work)
+- [ ] PROJECT_OVERVIEW §3/§11/§15 consistent with summaries
+- [ ] SYSTEM_DIAGRAMS.md — diagrams match real behavior, or diagram debt noted
+- [ ] README run/setup still accurate
+
+When in doubt, update §11 and state what is **not** production-verified.

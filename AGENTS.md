@@ -94,3 +94,64 @@ Explore → Backlog → BA/DA validation → Trusted semantic/playbook → futur
 ```
 
 Operations feedback (Phase 2+) feeds back into `knowledge/01-discovery/`.
+
+---
+
+## Documentation & Handover Contract (binding)
+
+Keep **PROJECT_OVERVIEW.md**, **phase-summaries/**, **README.md**, and **docs/diagrams/SYSTEM_DIAGRAMS.md** aligned with the repo whenever the system changes. This contract applies to AI agents and human developers.
+
+### Update triggers — edit docs in the same change set when you:
+
+| Trigger | Minimum updates |
+|---------|-----------------|
+| New/changed API, route, job kind, or agent graph | `PROJECT_OVERVIEW.md` §4–6; `README.md` if run/setup changes; relevant diagram(s) in `docs/diagrams/SYSTEM_DIAGRAMS.md` (§1–3) |
+| Architecture, data-source fallback, or source resolution | `PROJECT_OVERVIEW.md` §4; diagram §1, §5 |
+| Insight, learning, digest pipelines, or scheduler jobs | `PROJECT_OVERVIEW.md` §4–6; diagram §6, §7 |
+| Knowledge / Trusted lifecycle or promotion flow | `knowledge/07-testing/` when sign-off; diagram §8 |
+| Phase G–K scope, gate, or conformance test | Phase doc under `knowledge/05-architecture/phases/`; gate in `gates/`; `phase-summaries/phase-{x}.md`; diagram §9, §10 if readiness changes |
+| Production/live verification (or lack thereof) | `PROJECT_OVERVIEW.md` §3 + §11; phase summary **สถานะ** line; diagram §10 |
+| Remaining work reprioritized | `PROJECT_OVERVIEW.md` §11; active phase summary **งานคงเหลือ** |
+| Test count or pytest scope changes | `PROJECT_OVERVIEW.md` §9; phase summary **ผลเทสต์** |
+| Trusted promotion, sign-off, or owner gate | `knowledge/07-testing/`; `PROJECT_OVERVIEW.md` §3 handover items |
+
+If unsure whether a change triggers an update, update **PROJECT_OVERVIEW.md** §11 and note what was not verified.
+
+### Phase summary requirements (`phase-summaries/`)
+
+- One file per closed or partially closed phase: `phase-{letter}.md` (see `phase-summaries/README.md`).
+- Required sections: **สิ่งที่ทำแล้ว**, **งานคงเหลือ**, **เกตที่ค้าง**, **commits ที่เกี่ยวข้อง**, **วันที่**.
+- Link to the phase doc and gate artifact when they exist.
+- After **push to remote**, add the commit hash(es) and push date — not before push (avoid stale hashes).
+- Do not invent completed work; cite phase doc, gate, or commit evidence only.
+
+### Code-complete vs production-verified (honesty rule)
+
+| Label | Meaning | Allowed wording |
+|-------|---------|-----------------|
+| **Code-complete** | Merged code + pytest green | "โค้ดเสร็จ", "tests passed", module exists |
+| **Production-verified** | Live env + owner/metric evidence | "ยืนยันบน production/live", gate signed, §10 criteria met |
+
+Never mark production-verified from tests alone. If live gates are open, say so explicitly in §3, §11, and the phase summary **สถานะ** line.
+
+### README sync
+
+`README.md` is the install/run entry point. When setup, scripts, env vars, or default run flow change, update README in the same PR/session. Point deep context to `PROJECT_OVERVIEW.md` — do not duplicate the full overview in README.
+
+### System diagrams sync
+
+`docs/diagrams/SYSTEM_DIAGRAMS.md` is a maintained handover artifact — not optional illustration. When architecture, agent order/graph, job kinds, data-source fallback, insight/learning/digest pipelines, knowledge/Trusted lifecycle, or phase readiness changes, update the relevant Mermaid diagram(s) in the same change set. Keep diagram style consistent (Thai labels, English technical terms, `flowchart` / `sequenceDiagram` / `stateDiagram-v2` only). Apply the same **code-complete vs production-verified** honesty rule: label live gates and pending verification on diagrams exactly as in overview and phase summaries — never imply production-verified from tests alone. If diagrams cannot be updated in time, note **diagram debt** in the phase summary and overview §11.
+
+### Docs review before phase handover
+
+Before calling a phase "done" or handing off to the next owner/session:
+
+1. Phase doc Definition of Done checked with real evidence.
+2. Gate artifact exists in `phases/gates/` (G–K) or sign-off doc updated (Phase 1–2).
+3. `phase-summaries/phase-{x}.md` written or updated per template.
+4. `PROJECT_OVERVIEW.md` header date + reference commit; §3, §11, and §15 reflect current truth.
+5. `README.md` still accurate for run/setup.
+6. `docs/diagrams/SYSTEM_DIAGRAMS.md` — relevant diagram(s) match real behavior, or diagram debt is noted honestly.
+7. No contradiction between overview, summaries, gates, diagrams, and `test_roadmap_conformance.py`.
+
+Cursor enforces a short checklist via `.cursor/rules/project-documentation-governance.mdc` (alwaysApply). **This section in AGENTS.md is the source of truth.**

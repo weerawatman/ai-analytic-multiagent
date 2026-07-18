@@ -282,6 +282,8 @@ Scratch files under `data/local/local_data/` (reserved for future parquet / job-
 
 ## Architecture
 
+**ภาพรวมโปรเจกต์ (ไทย, สำหรับ owner + developer):** [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) — สถานะ code vs live, workflows, Phase D/F/G–K, handover checklist
+
 ```
 User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
                                            │
@@ -448,10 +450,19 @@ flowchart TB
 
 ---
 
+## Maintaining project context
+
+When runtime behavior, APIs, phases, gates, or verification status changes, update **`PROJECT_OVERVIEW.md`**, the relevant **`phase-summaries/phase-*.md`**, **`docs/diagrams/SYSTEM_DIAGRAMS.md`** (when flows/architecture change), and this README (setup/run only) in the **same change set** — diagrams are a mandatory handover standard, not optional. Rules: **`AGENTS.md`** → *Documentation & Handover Contract*; template: **`phase-summaries/README.md`**.
+
+---
+
 ## Documentation
 
 | Topic | Path |
 |-------|------|
+| **Project overview & handover** | `PROJECT_OVERVIEW.md` |
+| **System diagrams (Thai + English technical terms)** | `docs/diagrams/SYSTEM_DIAGRAMS.md` |
+| Phase end summaries | `phase-summaries/` |
 | PRD & acceptance criteria | `knowledge/03-prd/` |
 | Architecture & ADRs | `knowledge/05-architecture/` |
 | Build sprints | `knowledge/06-sprints/` |
