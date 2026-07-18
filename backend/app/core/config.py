@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     # Phase G2 — inject approved Metric Registry into DA prompt
     metric_registry_in_prompt: bool = True
 
+    # Phase H — snapshot refresh job wall-clock (backfill can be slow on mirror)
+    snapshot_refresh_max_seconds: int = 900
+    # Inject computed detector summary into DS prompt when snapshots exist
+    analytics_context_in_prompt: bool = True
+
     # Anthropic external consultant (Claude)
     anthropic_api_key: str = ""
     consultant_enabled: bool = False

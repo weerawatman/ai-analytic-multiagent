@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.app.api.routes import (
+    analytics,
     approval,
     backlog,
     briefings,
@@ -30,6 +31,7 @@ from backend.app.core.logger import logger
 from backend.app.services.chat_store import init_chat_db
 from backend.app.services.job_store import fail_orphaned_jobs, init_jobs_db
 from backend.app.services.local_paths import ensure_local_structure
+from backend.app.services.snapshot_store import init_analytics_db
 
 
 @asynccontextmanager
@@ -38,10 +40,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     ensure_local_structure()
     init_chat_db()
     init_jobs_db()
+    init_analytics_db()
     orphaned = fail_orphaned_jobs()
     if orphaned:
         logger.warning("Marked %d orphaned job(s) from a previous run as failed", orphaned)
-    logger.info("Local storage initialized (SQLite + JSON)")
+    logger.info("Local storage initialized (SQLite + JSON + analytics.db)")
     yield
     logger.info("Shutting down AI Analytics Multi-Agent System")
 
@@ -79,6 +82,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(ratings.router, prefix="/api/v1")
 app.include_router(metrics.router, prefix="/api/v1")
+app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(eval_routes.router, prefix="/api/v1")
 app.include_router(approval.router, prefix="/api/v1")
 app.include_router(fabric.router, prefix="/api/v1")

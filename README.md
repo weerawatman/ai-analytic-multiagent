@@ -255,6 +255,7 @@ Scratch files under `data/local/local_data/` (reserved for future parquet / job-
 | `data/local/team_memory/` | Onboarding baseline |
 | `data/local/knowledge/` | Glossary, discovery, SQL reference, **metric_registry.json** |
 | `data/local/eval/` | Golden questions + eval results (Phase G3 baseline) |
+| `data/local/analytics/` | Metric snapshots (`analytics.db`) — Phase H |
 | `data/local/models/approved/` | Phase E promoted models (convention reserved now) |
 
 ### Windows Task Scheduler (optional)
@@ -321,6 +322,12 @@ User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
 | `GET` | `/api/v1/knowledge/sap-tables/lookup/{table}` | Lookup description |
 | `GET/POST` | `/api/v1/briefings/{theme_id}` | Multi-role CEO briefs |
 | `POST` | `/api/v1/feedback/{theme_id}` | CEO feedback on briefs |
+| `GET/POST` | `/api/v1/metrics/` | Metric Registry CRUD + preview (Phase G2) |
+| `GET` | `/api/v1/analytics/status` | Snapshot store status (`analytics.db`) |
+| `GET` | `/api/v1/analytics/series/{metric_key}` | Read metric time series |
+| `POST` | `/api/v1/analytics/refresh` | Enqueue `snapshot_refresh` job (202) |
+| `GET` | `/api/v1/analytics/detectors/summary` | Detector summary for DS context |
+| `POST` | `/api/v1/chat/rating` | 👍/👎 answer rating (Phase G1b) |
 | `POST` | `/api/v1/approval/` | Approve semantic layer updates |
 
 ---
@@ -330,8 +337,9 @@ User ──► Streamlit UI ──► FastAPI ──► LangGraph Orchestrator
 ```
 ├── backend/app/
 │   ├── agents/           # LangGraph orchestrator + DE/Analyst/Scientist
-│   ├── api/routes/       # chat, fabric, themes, backlog, semantic, validation
-│   ├── services/         # fabric_connector, sql_guard, stores, promotion
+│   ├── analytics/        # Phase H pure detectors / forecasting / contribution
+│   ├── api/routes/       # chat, analytics, metrics, fabric, themes, …
+│   ├── services/         # fabric_connector, sql_guard, snapshot_*, stores
 │   └── schemas/
 ├── frontend/
 │   ├── app.py            # Streamlit main

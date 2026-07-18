@@ -39,12 +39,25 @@ def get_approved_models_dir(settings: Settings | None = None) -> Path:
     return path
 
 
+def get_analytics_dir(settings: Settings | None = None) -> Path:
+    """Phase H analytics snapshots (separate from app.db — INV-7)."""
+    path = get_local_dir(settings) / "analytics"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_analytics_db_path(settings: Settings | None = None) -> Path:
+    """SQLite file for metric snapshots / snapshot_runs (WAL)."""
+    return get_analytics_dir(settings) / "analytics.db"
+
+
 # Directories that cleanup-local-data.ps1 must never delete.
 CLEANUP_PRESERVE_RELATIVE = (
     "team_memory",
     "knowledge",
     "models/approved",
     "eval",
+    "analytics",
 )
 
 
@@ -65,6 +78,7 @@ def ensure_local_structure(settings: Settings | None = None) -> None:
         "local_data",  # Phase E scratch (parquet / job models) — convention only in Phase D
         "models",
         "eval",  # Phase G3 golden questions + results
+        "analytics",  # Phase H metric snapshots (analytics.db)
     ):
         (local / name).mkdir(parents=True, exist_ok=True)
 

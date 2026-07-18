@@ -35,6 +35,9 @@ CEO feedback:
 Team memory:
 {team_memory_context}
 
+Computed analytics (detectors on metric snapshots — treat as evidence, not guesses):
+{analytics_context}
+
 Data Engineer context:
 {schema_info}
 
@@ -71,6 +74,9 @@ CEO feedback:
 
 Team memory:
 {team_memory_context}
+
+Computed analytics (detectors on metric snapshots — treat as evidence, not guesses):
+{analytics_context}
 
 Analyst output:
 {query_result}
@@ -126,6 +132,7 @@ async def explore_critique_node(state: AgentState) -> dict:
             knowledge_context=state.knowledge_context or "(none)",
             ceo_feedback_context=state.ceo_feedback_context or "(none)",
             team_memory_context=state.team_memory_context or "(none)",
+            analytics_context=state.analytics_context or "(no snapshot detectors yet)",
             schema_info=state.schema_info or "(none)",
         )
     else:
@@ -135,6 +142,7 @@ async def explore_critique_node(state: AgentState) -> dict:
             knowledge_context=state.knowledge_context or "(none)",
             ceo_feedback_context=state.ceo_feedback_context or "(none)",
             team_memory_context=state.team_memory_context or "(none)",
+            analytics_context=state.analytics_context or "(no snapshot detectors yet)",
             query_result=state.query_result,
         )
 

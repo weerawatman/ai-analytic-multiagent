@@ -822,3 +822,132 @@ async def _run_consult_job(job_id: str, theme_id: str, question: str) -> None:
                 await hb_task
             except (asyncio.CancelledError, Exception):
                 pass
+
+
+def start_snapshot_refresh_job(
+    *,
+    mode: str = "auto",
+    end_month: str | None = None,
+    metric_keys: list[str] | None = None,
+) -> dict[str, Any]:
+    """Enqueue metric snapshot refresh (Phase H) — no LLM, SQL from registry only."""
+    thread_id = "analytics:snapshot_refresh"
+    existing = job_store.find_active_job("snapshot_refresh", thread_id)
+    if existing is not None:
+        raise JobConflictError(existing)
+
+    job = job_store.create_job(
+        "snapshot_refresh",
+        thread_id,
+        question=f"snapshot_refresh:{mode}",
+        params={
+            "mode": mode,
+            "end_month": end_month,
+            "metric_keys": metric_keys,
+        },
+    )
+    _track(
+        job["id"],
+        asyncio.create_task(
+            _run_snapshot_refresh_job(
+                job["id"], mode=mode, end_month=end_month, metric_keys=metric_keys
+            )
+        ),
+    )
+    return job
+
+
+async def _run_snapshot_refresh_job(
+    job_id: str,
+    *,
+    mode: str,
+    end_month: str | None,
+    metric_keys: list[str] | None,
+) -> None:
+    from backend.app.services import snapshot_refresh_service
+
+    hb_task: asyncio.Task | None = None
+    try:
+        _mark_job_running(job_id)
+        hb_task = asyncio.create_task(_heartbeat_loop(job_id))
+        job_store.append_step(job_id, "snapshot_refresh")
+        max_seconds = get_settings().snapshot_refresh_max_seconds
+
+        def _progress(note: str) -> None:
+            job_store.update_job(job_id, current_step="snapshot_refresh")
+            # Append note onto the active step without finishing it
+            job = job_store.get_job(job_id)
+            if not job:
+                return
+            progress = list(job.get("progress") or [])
+            for step in reversed(progress):
+                if step.get("step") == "snapshot_refresh" and step.get("status") == "running":
+                    step["note"] = note
+                    break
+            job_store.update_job(job_id, progress=progress)
+
+        try:
+            result = await asyncio.wait_for(
+                snapshot_refresh_service.refresh_snapshots(
+                    mode=mode,
+                    end_month=end_month,
+                    metric_keys=metric_keys,
+                    progress_cb=_progress,
+                ),
+                timeout=max_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Snapshot refresh job %s timed out after %ss", job_id, max_seconds)
+            _fail_job_on_timeout(job_id, max_seconds)
+            return
+
+        status = result.get("status") or "done"
+        if status == "failed":
+            job_store.finish_step(
+                job_id,
+                "snapshot_refresh",
+                "failed",
+                "; ".join(result.get("errors") or []) or "refresh failed",
+            )
+            job_store.update_job(
+                job_id,
+                status="failed",
+                error="; ".join(result.get("errors") or []) or "snapshot refresh failed",
+                result=result,
+                current_step=None,
+                finished_at=_utc_now(),
+            )
+            return
+
+        note = (
+            f"{result.get('metrics_refreshed', 0)} metrics · "
+            f"{result.get('months_window')} · source={result.get('source')}"
+        )
+        job_store.finish_step(job_id, "snapshot_refresh", "done", note)
+        job_store.update_job(
+            job_id,
+            status="done",
+            result=result,
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        logger.info("Snapshot refresh job %s done run_id=%s", job_id, result.get("run_id"))
+    except asyncio.CancelledError:
+        job_store.update_job(
+            job_id,
+            status="cancelled",
+            error="Job was cancelled",
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        raise
+    except Exception as e:
+        logger.exception("Snapshot refresh job %s failed", job_id)
+        _fail_job_on_error(job_id, e)
+    finally:
+        if hb_task is not None:
+            hb_task.cancel()
+            try:
+                await hb_task
+            except (asyncio.CancelledError, Exception):
+                pass

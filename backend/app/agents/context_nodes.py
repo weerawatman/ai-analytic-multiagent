@@ -31,14 +31,27 @@ def build_phase2_context(state: AgentState) -> dict[str, str]:
     sql_ref = format_sql_reference_context(table_refs, theme_id=theme_id or None)
     team_memory = format_team_memory_context(theme_id or None)
     metric_registry_ctx = ""
+    analytics_ctx = ""
     from backend.app.core.config import get_settings
 
-    if get_settings().metric_registry_in_prompt:
+    settings = get_settings()
+    if settings.metric_registry_in_prompt:
         from backend.app.services.metric_registry import format_metric_registry_context
 
         metric_registry_ctx = format_metric_registry_context(
             theme=state.theme or theme_id or None
         )
+    if settings.analytics_context_in_prompt:
+        try:
+            from backend.app.services.snapshot_refresh_service import (
+                summarize_detectors_for_theme,
+            )
+
+            analytics_ctx = summarize_detectors_for_theme(
+                state.theme or theme_id or None
+            )
+        except Exception:
+            analytics_ctx = ""
     if theme_id:
         # Deterministic profiling evidence rides with team memory so every
         # agent prompt that already includes the onboarding baseline also
@@ -52,6 +65,7 @@ def build_phase2_context(state: AgentState) -> dict[str, str]:
         "discovery_context": discovery,
         "knowledge_context": knowledge,
         "metric_registry_context": metric_registry_ctx,
+        "analytics_context": analytics_ctx,
         "sql_reference_context": sql_ref,
         "ceo_feedback_context": feedback,
         "team_memory_context": team_memory,

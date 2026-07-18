@@ -16,3 +16,9 @@ psycopg2-binary
 pyodbc
 azure-identity
 anthropic
+# Phase H analytics engine (cp314 Windows wheels verified 2026-07-18)
+numpy==2.5.1
+pandas==2.3.3
+scipy==1.18.0
+# statsmodels is optional (STL/ETS) — import-guarded; install when cp314 wheel available:
+#   pip install statsmodels==0.14.6
