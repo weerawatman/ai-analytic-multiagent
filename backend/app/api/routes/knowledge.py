@@ -19,6 +19,12 @@ from backend.app.services.sap_table_store import (
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
 
+@router.get("/aggregate")
+async def aggregate_knowledge(theme: str | None = None) -> dict:
+    """Cross-theme approved knowledge layer (Phase K)."""
+    return knowledge_store.aggregate_approved_knowledge(theme=theme)
+
+
 @router.get("/glossary")
 async def list_glossary(theme: str | None = None) -> list[dict]:
     return await knowledge_store.list_items("glossary", theme=theme)

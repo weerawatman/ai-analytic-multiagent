@@ -185,6 +185,68 @@ def _glossary_lines_budgeted(items: list[dict[str, Any]]) -> list[str]:
     ]
 
 
+def aggregate_approved_knowledge(
+    *,
+    theme: str | None = None,
+    include_lessons: bool = True,
+) -> dict[str, Any]:
+    """Cross-theme aggregation: global layer + per-theme override (Phase K).
+
+    Precedence: theme-specific approved item wins over global (no theme) on the
+    same natural key. Draft/rejected items are excluded. SQL lessons from
+    ``sql_lessons.json`` are attached as a global layer (no per-theme override).
+    """
+    kinds = ("glossary", "targets", "relationships")
+    layers: dict[str, list[dict[str, Any]]] = {k: [] for k in kinds}
+
+    for kind in kinds:
+        path = _path_for(kind)
+        if not path.exists():
+            continue
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        items = [i for i in doc.get("items", []) if i.get("status") == "approved"]
+        global_items = [i for i in items if not i.get("theme")]
+        theme_items = [i for i in items if theme and i.get("theme") == theme]
+
+        # Index by natural key; theme overrides global
+        merged: dict[str, dict[str, Any]] = {}
+        for item in global_items:
+            key_parts = [_norm(item.get(k)) for k in _NATURAL_KEYS.get(kind, ("id",))]
+            merged["|".join(key_parts)] = {**item, "layer": "global"}
+        for item in theme_items:
+            key_parts = [_norm(item.get(k)) for k in _NATURAL_KEYS.get(kind, ("id",))]
+            merged["|".join(key_parts)] = {**item, "layer": "theme_override"}
+        layers[kind] = list(merged.values())
+
+    lessons: list[dict[str, Any]] = []
+    if include_lessons:
+        try:
+            from backend.app.services import lesson_miner
+
+            lessons = [
+                {**L, "layer": "global", "status": "available"}
+                for L in lesson_miner.load_lessons()
+            ]
+        except Exception:
+            lessons = []
+
+    return {
+        "version": "1.0",
+        "theme": theme,
+        "precedence": "theme_override > global",
+        "glossary": layers["glossary"],
+        "targets": layers["targets"],
+        "relationships": layers["relationships"],
+        "lessons": lessons,
+        "counts": {
+            "glossary": len(layers["glossary"]),
+            "targets": len(layers["targets"]),
+            "relationships": len(layers["relationships"]),
+            "lessons": len(lessons),
+        },
+    }
+
+
 def format_knowledge_context(*, theme: str | None = None) -> str:
     """Sync helper for agent prompts — reads knowledge files (status-filtered).
 

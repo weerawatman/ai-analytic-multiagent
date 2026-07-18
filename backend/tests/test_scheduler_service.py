@@ -41,7 +41,7 @@ def test_enqueue_skipped_when_disabled(jobs_db, monkeypatch):
     monkeypatch.setattr(
         scheduler_service.job_runner, "start_insight_pipeline_job", lambda **kw: calls.append(kw)
     )
-    scheduler_service._enqueue("test")
+    scheduler_service._enqueue_insights("test")
     assert calls == []
 
 
@@ -52,7 +52,7 @@ def test_enqueue_deferred_when_busy(jobs_db, enabled, monkeypatch):
     )
     job = job_store.create_job("chat", "t1", question="hi")
     job_store.update_job(job["id"], status="running")
-    scheduler_service._enqueue("test")
+    scheduler_service._enqueue_insights("test")
     assert calls == []
 
 
@@ -61,7 +61,7 @@ def test_enqueue_runs_when_enabled_and_idle(jobs_db, enabled, monkeypatch):
     monkeypatch.setattr(
         scheduler_service.job_runner, "start_insight_pipeline_job", lambda **kw: calls.append(kw)
     )
-    scheduler_service._enqueue("test")
+    scheduler_service._enqueue_insights("test")
     assert len(calls) == 1
 
 
@@ -71,7 +71,7 @@ def test_enqueue_skips_when_already_active(jobs_db, enabled, monkeypatch):
         scheduler_service.job_runner, "start_insight_pipeline_job", lambda **kw: calls.append(kw)
     )
     job_store.create_job("insight_pipeline", "analytics:insight_pipeline", question="x")
-    scheduler_service._enqueue("test")
+    scheduler_service._enqueue_insights("test")
     assert calls == []
 
 

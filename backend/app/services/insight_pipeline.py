@@ -477,9 +477,22 @@ async def run_insight_pipeline(
         step_cb("publish")
     counts = _step_publish(candidates, run_id=run_id, db_path=db_path)
 
+    digest_result = None
+    if settings.digest_enabled and settings.digest_after_pipeline:
+        if step_cb:
+            step_cb("board_digest")
+        try:
+            from backend.app.services import digest_service
+
+            digest_result = await digest_service.generate_digest(polish=None, db_path=db_path)
+        except Exception as exc:
+            logger.warning("Board digest after pipeline skipped: %s", type(exc).__name__)
+            digest_result = {"status": "skipped", "error": type(exc).__name__}
+
     return {
         "run_id": run_id,
         "refresh": refresh_result,
         "candidates_total": len(candidates),
         **counts,
+        "digest": digest_result,
     }

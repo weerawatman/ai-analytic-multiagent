@@ -234,11 +234,15 @@ python -m pytest backend/tests/ -q
 # Phase J — mine SQL lessons from PDCA failure log (manual; no job kind yet)
 $env:PYTHONPATH = "."
 .\.venv\Scripts\python.exe scripts\mine_lessons.py
+
+# Phase K — board digest (manual; weekly cron also via scheduler when DIGEST_ENABLED)
+$env:PYTHONPATH = "."
+.\.venv\Scripts\python.exe scripts\generate_digest.py --no-polish
 ```
 
 Owner sign-off: `knowledge/07-testing/sign-off.md` (Phase 1) · `knowledge/07-testing/phase-2-sign-off.md` (Phase 2)
 
-Phase G→K roadmap: `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` · Phase G handoff: `phases/phase-g-foundation.md` · Phase H: `phases/phase-h-analytics-engine.md` · Phase I: `phases/phase-i-proactive-insights.md` · Phase J: `phases/phase-j-learning-loops.md`
+Phase G→K roadmap: `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` · Phase G handoff: `phases/phase-g-foundation.md` · Phase H: `phases/phase-h-analytics-engine.md` · Phase I: `phases/phase-i-proactive-insights.md` · Phase J: `phases/phase-j-learning-loops.md` · Phase K: `phases/phase-k-world-class.md`
 
 ---
 
@@ -263,6 +267,8 @@ Scratch files under `data/local/local_data/` (reserved for future parquet / job-
 | `data/local/knowledge/sql_lessons.json` | Mined SQL lessons (Phase J) — keep; regenerate via `scripts/mine_lessons.py` |
 | `data/local/models/` | `insight_ranker.pkl` (Phase J) + `approved/` reserved for Phase E |
 | `data/local/models/approved/` | Phase E promoted models (convention reserved now) |
+| `data/local/briefings/digests/` | Board digests `{yyyy-ww}.json` (Phase K) |
+| `data/local/knowledge/curriculum/` | Role curriculum banks (Phase K) |
 
 ### Windows Task Scheduler (optional)
 
@@ -354,7 +360,7 @@ flowchart TB
 | **H** (เสร็จฝั่งโค้ด) | สมองสถิติของ Hub: อ่านข้อมูลเองด้วยคณิตศาสตร์จริง ไม่ใช่ prompt text |
 | **I** (เสร็จฝั่งโค้ด) | Hub ทำงาน proactive — ตื่นเช้ามาเจอ "เมื่อคืนระบบพบอะไร" โดยไม่ต้องถาม |
 | **J** (เสร็จฝั่งโค้ด) | Hub เรียนรู้จาก feedback — SQL patterns, lessons, semantic retrieval, insight ranker (ML dormant จน ≥100 labels) |
-| **K** | World-class layer: board digest, role curriculum — Hub เป็นทีมมืออาชีพที่พัฒนาตัวเอง |
+| **K** (เสร็จฝั่งโค้ด) | World-class layer: board digest, role curriculum + `study` job, eval trend — live metrics ค้าง |
 
 ---
 
@@ -390,6 +396,11 @@ flowchart TB
 | `GET` | `/api/v1/insights/status` | Insight status counts + feedback stats |
 | `POST` | `/api/v1/insights/refresh` | Enqueue `insight_pipeline` job (202) |
 | `POST` | `/api/v1/insights/{id}/feedback` | 👍/👎/⚠️ feedback on an insight |
+| `GET/POST` | `/api/v1/digests…` | Board digest list/get/generate (Phase K) |
+| `GET` | `/api/v1/curriculum` | Curriculum pass-rate summary (Phase K) |
+| `POST` | `/api/v1/study/run` | Enqueue canonical `study` job (202/409) |
+| `GET` | `/api/v1/eval/trend` | Eval accuracy trend chart data (Phase K) |
+| `GET` | `/api/v1/knowledge/aggregate` | Cross-theme approved knowledge layer |
 | `POST` | `/api/v1/approval/` | Approve semantic layer updates |
 
 ---
@@ -405,7 +416,7 @@ flowchart TB
 │   └── schemas/
 ├── frontend/
 │   ├── app.py            # Streamlit main
-│   ├── pages/            # Multipage — insights.py (Phase I proactive feed)
+│   ├── pages/            # Multipage — insights.py (I), digest.py (K)
 │   └── components/       # theme, backlog, promotion, validation panels
 ├── data/
 │   ├── templates/        # backlog + semantic JSON templates (committed)

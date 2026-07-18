@@ -88,7 +88,7 @@
 | Job kinds | `snapshot_refresh`, `insight_pipeline`, `study` (ผ่าน job_runner เท่านั้น) |
 | SQLite ใหม่ | `data/local/analytics/analytics.db` (WAL) — ตาราง `metric_snapshots` (PK: metric_key, period, dim_name, dim_value), `snapshot_runs`, `insights`, `insight_feedback`, `sql_patterns`; ส่วน `answer_ratings` อยู่ใน `app.db` (chat store เดิม) |
 | Store files | `data/local/knowledge/metric_registry.json`, `data/local/knowledge/sql_lessons.json`, `data/local/eval/golden_questions.json`, `data/local/eval/results/`, `data/local/models/insight_ranker.pkl`, `data/local/knowledge/curriculum/{role}.json`, `data/local/briefings/digests/` |
-| Config keys | `insight_pipeline_enabled`, `insight_cron_hour`, `insight_narrate_top_k`, `insight_catchup_after_hours`, `ollama_embed_model` |
+| Config keys | `insight_pipeline_enabled`, `insight_cron_hour`, `insight_narrate_top_k`, `insight_catchup_after_hours`, `ollama_embed_model`, `digest_enabled`, `study_enabled`, `consultant_polish_digest` |
 | Constants | `MIN_LABELS_FOR_ML = 100`, `MIN_AUC_GATE = 0.6` (insight_ranker) |
 
 ### 4.3 Phase Gates — หลักฐานจบ phase เก็บใน git

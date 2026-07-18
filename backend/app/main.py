@@ -21,6 +21,7 @@ from backend.app.api.routes import (
     knowledge,
     metrics,
     onboarding,
+    phase_k,
     ratings,
     semantic,
     sessions,
@@ -90,6 +91,7 @@ app.include_router(ratings.router, prefix="/api/v1")
 app.include_router(metrics.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(insights.router, prefix="/api/v1")
+app.include_router(phase_k.router, prefix="/api/v1")
 app.include_router(eval_routes.router, prefix="/api/v1")
 app.include_router(approval.router, prefix="/api/v1")
 app.include_router(fabric.router, prefix="/api/v1")

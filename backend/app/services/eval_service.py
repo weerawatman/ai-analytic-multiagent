@@ -176,6 +176,45 @@ async def resolve_reference_value(
     return None, sql, "parse_error"
 
 
+def list_eval_runs(*, limit: int = 50) -> list[dict[str, Any]]:
+    """Summaries of prior eval result files — newest first (Phase K trend chart)."""
+    root = results_dir()
+    files = sorted(root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    out: list[dict[str, Any]] = []
+    for path in files[:limit]:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        out.append(
+            {
+                "run_id": doc.get("run_id") or path.stem,
+                "started_at": doc.get("started_at"),
+                "finished_at": doc.get("finished_at"),
+                "question_count": doc.get("question_count"),
+                "passed": doc.get("passed"),
+                "accuracy_pct": doc.get("accuracy_pct"),
+                "sql_success_rate": doc.get("sql_success_rate"),
+                "median_latency_s": doc.get("median_latency_s"),
+                "harness_baseline": doc.get("harness_baseline", False),
+                "elapsed_s": doc.get("elapsed_s"),
+            }
+        )
+    # Stable chronological order for charts (oldest → newest)
+    out.sort(key=lambda r: r.get("finished_at") or r.get("started_at") or "")
+    return out
+
+
+def eval_trend(*, limit: int = 50) -> dict[str, Any]:
+    runs = list_eval_runs(limit=limit)
+    return {
+        "run_count": len(runs),
+        "runs": runs,
+        "latest_accuracy_pct": runs[-1]["accuracy_pct"] if runs else None,
+        "first_accuracy_pct": runs[0]["accuracy_pct"] if runs else None,
+    }
+
+
 async def run_eval(
     questions: list[dict[str, Any]] | None = None,
     *,

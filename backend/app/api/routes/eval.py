@@ -23,6 +23,18 @@ async def list_golden_questions(active_only: bool = True) -> dict:
     return {"items": items, "total": len(items)}
 
 
+@router.get("/trend")
+async def eval_trend(limit: int = 50) -> dict:
+    """Eval accuracy trend across recorded runs (Phase K)."""
+    return eval_service.eval_trend(limit=limit)
+
+
+@router.get("/runs")
+async def list_eval_runs(limit: int = 50) -> dict:
+    items = eval_service.list_eval_runs(limit=limit)
+    return {"items": items, "total": len(items)}
+
+
 @router.post("/run")
 async def run_eval(body: EvalRunRequest | None = None) -> dict:
     body = body or EvalRunRequest()

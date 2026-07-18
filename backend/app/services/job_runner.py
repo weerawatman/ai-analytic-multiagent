@@ -1047,3 +1047,90 @@ async def _run_insight_pipeline_job(
                 await hb_task
             except (asyncio.CancelledError, Exception):
                 pass
+
+
+def start_study_job(
+    *,
+    theme_id: str = "sales",
+    theme_name: str = "",
+    roles: list[str] | None = None,
+) -> dict[str, Any]:
+    """Enqueue nightly curriculum study (Phase K) — canonical job kind ``study``."""
+    thread_id = "analytics:study"
+    existing = job_store.find_active_job("study", thread_id)
+    if existing is not None:
+        raise JobConflictError(existing)
+
+    job = job_store.create_job(
+        "study",
+        thread_id,
+        question=f"study:{theme_id}",
+        params={"theme_id": theme_id, "theme_name": theme_name, "roles": roles},
+    )
+    _track(
+        job["id"],
+        asyncio.create_task(
+            _run_study_job(
+                job["id"], theme_id=theme_id, theme_name=theme_name, roles=roles
+            )
+        ),
+    )
+    return job
+
+
+async def _run_study_job(
+    job_id: str,
+    *,
+    theme_id: str,
+    theme_name: str,
+    roles: list[str] | None,
+) -> None:
+    from backend.app.services import study_service
+
+    hb_task: asyncio.Task | None = None
+    try:
+        _mark_job_running(job_id)
+        hb_task = asyncio.create_task(_heartbeat_loop(job_id))
+        job_store.append_step(job_id, "study")
+        max_seconds = get_settings().study_job_max_seconds
+        try:
+            result = await asyncio.wait_for(
+                study_service.run_study_session(
+                    theme_id=theme_id, theme_name=theme_name, roles=roles
+                ),
+                timeout=max_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Study job %s timed out after %ss", job_id, max_seconds)
+            _fail_job_on_timeout(job_id, max_seconds)
+            return
+
+        note = f"{result.get('studied_count', 0)} questions studied"
+        job_store.finish_step(job_id, "study", "done", note)
+        job_store.update_job(
+            job_id,
+            status="done",
+            result=result,
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        logger.info("Study job %s done: %s", job_id, note)
+    except asyncio.CancelledError:
+        job_store.update_job(
+            job_id,
+            status="cancelled",
+            error="Job was cancelled",
+            current_step=None,
+            finished_at=_utc_now(),
+        )
+        raise
+    except Exception as e:
+        logger.exception("Study job %s failed", job_id)
+        _fail_job_on_error(job_id, e)
+    finally:
+        if hb_task is not None:
+            hb_task.cancel()
+            try:
+                await hb_task
+            except (asyncio.CancelledError, Exception):
+                pass

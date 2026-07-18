@@ -111,6 +111,17 @@ class Settings(BaseSettings):
     # Mined SQL lessons in the DA prompt — on by default (cheap static file read)
     sql_lessons_in_prompt: bool = True
 
+    # Phase K — board digest + curriculum study
+    digest_enabled: bool = False
+    digest_after_pipeline: bool = True  # when digest_enabled, also write after insight_pipeline
+    digest_cron_hour: int = 6  # Sunday UTC
+    consultant_polish_digest: bool = False
+    study_enabled: bool = False
+    study_cron_hour: int = 3
+    study_questions_per_run: int = 2
+    study_theme_id: str = "sales"
+    study_job_max_seconds: int = 3600
+
     # Anthropic external consultant (Claude)
     anthropic_api_key: str = ""
     consultant_enabled: bool = False

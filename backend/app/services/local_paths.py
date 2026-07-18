@@ -83,6 +83,8 @@ def ensure_local_structure(settings: Settings | None = None) -> None:
         (local / name).mkdir(parents=True, exist_ok=True)
 
     (local / "knowledge" / "themes").mkdir(parents=True, exist_ok=True)
+    (local / "knowledge" / "curriculum").mkdir(parents=True, exist_ok=True)
+    (local / "briefings" / "digests").mkdir(parents=True, exist_ok=True)
     (local / "models" / "approved").mkdir(parents=True, exist_ok=True)
     (local / "eval" / "results").mkdir(parents=True, exist_ok=True)
 
