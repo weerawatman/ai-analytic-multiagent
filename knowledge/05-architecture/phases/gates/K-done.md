@@ -1,7 +1,7 @@
 # Phase K Done
 
 > **วันที่:** 2026-07-18
-> **commit hash:** N/A (working tree — owner will commit; base Phase J `08f3af2` / `fc5adfa`)
+> **commit hash:** `9a65a20` (docs summary `8045cb4`; base Phase J `08f3af2`)
 > **phase doc:** [phase-k-world-class.md](../phase-k-world-class.md)
 > **precondition:** Phase I + J โค้ดพร้อม; live traffic ยัง cold start
 
@@ -40,4 +40,3 @@ Conformance (`test_roadmap_conformance.py`): INV-1..INV-9, INV-11 **pass**; `dig
 2. Live curriculum pass-rate โตขึ้น (`STUDY_ENABLED=true` + CEO approve study results)
 3. Owner ยืนยัน eval trend ว่า "ฉลาดขึ้นจริง"
 4. O-3 period basis (fiscal vs calendar) — digest ติดป้าย provisional
-5. Owner commit + push (agent ไม่ commit ตามคำสั่ง)

@@ -1,7 +1,7 @@
 # Phase G Done
 
 > **วันที่:** 2026-07-18
-> **base commit:** `d9c650e` + Phase G working tree (not committed — owner will commit)
+> **commit hash:** `df3a5f4` (docs summary `05fcb24`; base ก่อนงานนี้ `d9c650e`)
 > **phase doc:** [phase-g-foundation.md](../phase-g-foundation.md)
 
 ## เกณฑ์สำเร็จ Phase G (roadmap §6)
@@ -28,4 +28,3 @@
 2. BA ยืนยันสูตร Net Profit (O-1) + นิยาม discount rate ตัวจริง (แทน provisional O-2)
 3. Live eval ผ่าน Ollama + SQL source (เมื่อ Fabric/Postgres พร้อม) → `G3-baseline-recorded-v2.md`
 4. UI smoke: เปิด chat job ดู heartbeat / กด 👍👎
-5. Owner commit + push (agent ไม่ commit ตามคำสั่ง)

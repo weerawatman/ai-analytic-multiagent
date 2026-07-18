@@ -1,7 +1,7 @@
 # Phase J Done
 
 > **วันที่:** 2026-07-18
-> **commit hash:** N/A (working tree — owner will commit; base Phase I `2525108` + custom subagent team `2477b32`)
+> **commit hash:** `08f3af2` (docs summary `fc5adfa`; base Phase I `2525108`)
 > **phase doc:** [phase-j-learning-loops.md](../phase-j-learning-loops.md)
 > **precondition:** Phase G1b (`answer_ratings`) + Phase I (`insight_feedback` / feed) — cold start จริง (0 labels)
 
@@ -41,5 +41,3 @@ Conformance (`test_roadmap_conformance.py`): INV-1..INV-9, INV-11 **pass**; INV-
 2. สะสม `answer_ratings` / `insight_feedback` ≥ 100 labels แล้ว retrain ranker จริง
 3. เปิด `EMBEDDING_CONTEXT_ENABLED` / `SQL_PATTERN_CONTEXT_ENABLED` หลังมี Ollama `nomic-embed-text`
 4. รัน golden-eval เทียบ baseline หลังมี traffic จริง (วัด accuracy +10 / retry −30%)
-5. Owner commit + push (agent ไม่ commit ตามคำสั่ง)
-6. **อย่าเริ่ม Phase K จนกว่า owner จะสั่ง**

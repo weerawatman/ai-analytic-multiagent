@@ -31,10 +31,11 @@
 
 ## commits ที่เกี่ยวข้อง
 
-- ยังไม่ commit ในรอบนี้ (working tree) — base ก่อนงานนี้: `fde9a2f` (Phase H)
+- `2525108` — `feat(phase-i): proactive insight pipeline — detectors, scheduler, insights UI`
+- pushed: 2026-07-18 → origin/master (base ก่อนงานนี้: `fde9a2f` Phase H)
 
 ## หมายเหตุ
 
-- Phase J (`insight_ranker`, `embedding_service`, `sql_pattern_store`, `lesson_miner`) — ทำแล้ว ดู [phase-j.md](phase-j.md); Phase K ยังไม่เริ่ม
+- Phase J — ดู [phase-j.md](phase-j.md) (`08f3af2` บน master); Phase K — ดู [phase-k.md](phase-k.md) (`9a65a20` บน master)
 - Lazy narrate-on-first-view สำหรับ candidate นอก top-K ยังไม่ทำ UI (เก็บเป็น `status="scored"` เฉยๆ ใน DB)
 - Auto-สร้าง golden-question จาก feedback `label="wrong"` ยังไม่ทำ (เลื่อนไป K ตาม Phase J Out)

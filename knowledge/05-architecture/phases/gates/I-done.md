@@ -1,7 +1,7 @@
 # Phase I Done
 
 > **วันที่:** 2026-07-18
-> **commit hash:** N/A (working tree — owner will commit; base Phase H `fde9a2f`)
+> **commit hash:** `2525108` (base Phase H `fde9a2f`)
 > **phase doc:** [phase-i-proactive-insights.md](../phase-i-proactive-insights.md)
 > **precondition:** Phase H (`fde9a2f`) + Phase G1b (`answer_ratings`, already shipped)
 
@@ -20,7 +20,7 @@
 332 passed, 1 skipped in ~56s
 ```
 
-Conformance (`test_roadmap_conformance.py`): INV-2/3/4/6/7/9/11 **pass** (INV-4, INV-6 เปลี่ยนจาก skip → pass รอบนี้); INV-8 **skip** (Phase J ranker ยังไม่เริ่ม)
+Conformance (`test_roadmap_conformance.py`): INV-2/3/4/6/7/9/11 **pass** ณ ship Phase I (INV-4, INV-6 เปลี่ยนจาก skip → pass รอบนี้); INV-8 **skip** ณ ship (pass หลัง Phase J บน master)
 
 ## สิ่งที่ส่งมอบ (โค้ด)
 
@@ -45,4 +45,3 @@ Conformance (`test_roadmap_conformance.py`): INV-2/3/4/6/7/9/11 **pass** (INV-4,
 1. เปิด `INSIGHT_PIPELINE_ENABLED=true` แล้วปล่อยรันจริงต่อเนื่อง ≥ 1 สัปดาห์ — เก็บสถิติ insights/week + useful%/wrong% จริง
 2. Owner สมัคร/ทดสอบกด feedback 3 ปุ่มในหน้า Streamlit จริงเพื่อยืนยัน UX
 3. Live backfill ต้องเสร็จก่อน (Phase H gate ค้างอยู่) — ไม่งั้น `run_detectors` จะไม่มี snapshot ให้วิเคราะห์ (สังเกตจาก smoke test: `row_count:0` เพราะยังไม่เคย backfill จริงบน mirror)
-4. Owner commit + push (agent ไม่ commit ตามคำสั่ง)

@@ -1,7 +1,7 @@
 # Phase H Done
 
 > **วันที่:** 2026-07-18
-> **commit hash:** N/A (working tree — owner will commit; base Phase G `df3a5f4` / `05fcb24`)
+> **commit hash:** `fde9a2f` (docs summary `4a5cffb`; base Phase G `df3a5f4`)
 > **phase doc:** [phase-h-analytics-engine.md](../phase-h-analytics-engine.md)
 > **precondition:** [G3-baseline-recorded.md](G3-baseline-recorded.md) (INV-11) — มีอยู่ก่อนสร้าง `backend/app/analytics/`
 
@@ -20,7 +20,7 @@
 302 passed, 3 skipped in ~53s
 ```
 
-Conformance (`test_roadmap_conformance.py`): INV-2/3/7/9/11 **pass**; INV-4/6/8 **skip** (Phase I/J ยังไม่เริ่ม)
+Conformance (`test_roadmap_conformance.py`): INV-2/3/7/9/11 **pass** ณ ship Phase H; INV-4/6/8 **skip** ณ ship (pass หลัง Phase I/J บน master)
 
 ## สิ่งที่ส่งมอบ (โค้ด)
 
@@ -36,4 +36,3 @@ Conformance (`test_roadmap_conformance.py`): INV-2/3/7/9/11 **pass**; INV-4/6/8 
 1. Live backfill timing บน Postgres mirror (หรือ Fabric) — บันทึก elapsed ใน run note
 2. Owner validation: detectors จับ ≥ 3 เดือนที่คนรู้อยู่แล้วจากข้อมูลจริง (ไม่ใช่แค่ synthetic)
 3. Optional: `pip install statsmodels==0.14.6` เพื่อ STL/ETS
-4. Owner commit + push (agent ไม่ commit ตามคำสั่ง)

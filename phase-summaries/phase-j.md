@@ -34,4 +34,4 @@
 
 ## หมายเหตุ
 
-- Phase K (`digest_service`, curriculum, `study` job) **ยังไม่เริ่ม** — หยุดตามคำสั่ง
+- Phase K — ดู [phase-k.md](phase-k.md) (`9a65a20` บน master)
