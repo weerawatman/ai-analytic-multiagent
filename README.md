@@ -241,6 +241,10 @@ See `data/templates/sql_reference/README.md` for the full workflow. Loader integ
 ## Validation & tests
 
 ```powershell
+# Loop Engineering readiness (env smoke + offline pytest; default Level 1)
+.\scripts\run-readiness-check.ps1
+.\scripts\run-readiness-check.ps1 -Level 0
+
 # Unit/integration tests
 $env:PYTHONPATH = "."
 python -m pytest backend/tests/ -q
@@ -263,6 +267,8 @@ $env:PYTHONPATH = "."
 $env:PYTHONPATH = "."
 .\.venv\Scripts\python.exe scripts\generate_digest.py --no-polish
 ```
+
+Loop Engineering catalog / reports: `knowledge/07-testing/loop-engineering/` · Cursor skill: `.cursor/skills/engineering-qa/loop-engineering-qa/` (invoke when asking to test readiness). QA recommends only — does not replace owner sign-off.
 
 Owner sign-off: `knowledge/07-testing/sign-off.md` (Phase 1) · `knowledge/07-testing/phase-2-sign-off.md` (Phase 2)
 
@@ -450,11 +456,13 @@ flowchart TB
 ├── scripts/
 │   ├── start.ps1             # one-command launcher (backend + frontend + Ollama check)
 │   ├── stop.ps1              # stop services started by start.ps1
+│   ├── run-readiness-check.ps1  # Loop Engineering L0–L2 readiness runner
 │   ├── run-backend.ps1
 │   ├── run-frontend.ps1
 │   ├── setup-ollama-models.ps1
 │   └── validate-phase1.ps1
-├── knowledge/            # discovery → build sprints, sign-off
+├── knowledge/            # discovery → build sprints, sign-off, loop-engineering QA
+├── .cursor/skills/engineering-qa/  # Loop Engineering QA skill
 └── .env.example
 ```
 

@@ -47,6 +47,9 @@ Owner:       Data Engineer (solo Phase 1)
 | Architecture | **Roadmap G→K (self-learning analytics)** | `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` |
 | Architecture | Phase gates (audit trail) | `knowledge/05-architecture/phases/gates/` |
 | Architecture | ADRs | `knowledge/05-architecture/adr/` |
+| Testing | Stage 07 index + owner sign-offs | `knowledge/07-testing/STAGE.md` |
+| Testing | **Loop Engineering QA** (readiness scenarios, run reports) | `knowledge/07-testing/loop-engineering/` |
+| Testing | Loop Engineering skill (orchestrator) | `.cursor/skills/engineering-qa/loop-engineering-qa/` |
 
 ---
 
@@ -114,8 +117,17 @@ Keep **PROJECT_OVERVIEW.md**, **phase-summaries/**, **README.md**, and **docs/di
 | Remaining work reprioritized | `PROJECT_OVERVIEW.md` §11; active phase summary **งานคงเหลือ** |
 | Test count or pytest scope changes | `PROJECT_OVERVIEW.md` §9; phase summary **ผลเทสต์** |
 | Trusted promotion, sign-off, or owner gate | `knowledge/07-testing/`; `PROJECT_OVERVIEW.md` §3 handover items |
+| Loop Engineering readiness run / new SCN / open QA defects | Sanitized report under `knowledge/07-testing/loop-engineering/`; `PROJECT_OVERVIEW.md` §9/§11; diagram §10/§11 if readiness story changes |
 
 If unsure whether a change triggers an update, update **PROJECT_OVERVIEW.md** §11 and note what was not verified.
+
+### Loop Engineering QA (readiness — not a human gate)
+
+- Entrypoint skill: `.cursor/skills/engineering-qa/loop-engineering-qa/` — invoke when the user asks to test the system / check readiness before real testing (`ทดสอบระบบ`, `ความพร้อม`, etc.).
+- Runner: `scripts/run-readiness-check.ps1` (L0 env, L1 pytest, optional L2 live/golden).
+- **QA recommends readiness only.** It does not approve Trusted promotion, KPI formulas, PRD/architecture, or production-verified status, and does not replace G–K gate artifacts.
+- Semi-auto authority: triage + fix + regression; **stop before commit/push** unless the user explicitly asks.
+- Never weaken `test_roadmap_conformance.py` to force a green run.
 
 ### Phase summary requirements (`phase-summaries/`)
 

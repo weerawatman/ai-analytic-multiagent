@@ -22,6 +22,7 @@
 | สถานะ live / gate / owner sign-off เปลี่ยน | §3, §11, §15 |
 | ปิดหรืออัปเดต phase | header (วันที่ + commit อ้างอิง), §10, §11 + `phase-summaries/phase-{x}.md` |
 | งานคงเหลือจัดลำดับใหม่ | §11 |
+| Loop Engineering readiness / SCN / QA defects | §9 + §11; รายงาน sanitized ใน `knowledge/07-testing/loop-engineering/` |
 
 ### วิธีอัปเดต (ทุกครั้งที่แก้ระบบ)
 
@@ -467,6 +468,10 @@ flowchart LR
 ```powershell
 $env:PYTHONPATH = "."
 python -m pytest backend/tests/ -q
+
+# Loop Engineering readiness (L0 env + L1 offline by default)
+.\scripts\run-readiness-check.ps1
+.\scripts\run-readiness-check.ps1 -Level 0
 ```
 
 ### ชั้นคุณภาพ
@@ -477,7 +482,10 @@ python -m pytest backend/tests/ -q
 | Roadmap invariants | `test_roadmap_conformance.py` (INV-1..INV-12) |
 | Phase DoD scripts | `validate-phase1.ps1`, `validate-phase2.ps1` |
 | Golden eval | `scripts/run-golden-eval.ps1` |
+| **Loop Engineering QA** | Skill `.cursor/skills/engineering-qa/loop-engineering-qa/` + `scripts/run-readiness-check.ps1` + catalog `knowledge/07-testing/loop-engineering/` |
 | Owner sign-off docs | `knowledge/07-testing/sign-off.md` |
+
+Loop Engineering **แนะนำความพร้อมเท่านั้น** — ไม่แทน Trusted / KPI / production sign-off และไม่ commit/push เองจนกว่าเจ้าของระบบจะสั่ง
 
 ### Quality Bar D (Explore)
 
@@ -551,6 +559,11 @@ python -m pytest backend/tests/ -q
 12. O-2 discount rate — BA ยืนยันแทน provisional
 13. Optional Phase E sandbox (`execute_python`) — deferred
 
+### Loop Engineering (framework พร้อม — ใช้ก่อนทดสอบจริง)
+
+14. รัน `.\scripts\run-readiness-check.ps1` (L0+L1) ก่อน manual Explore; ดู catalog ที่ `knowledge/07-testing/loop-engineering/`
+15. **ถัดไป (ไม่บล็อก framework):** ต่อ live `answer_fn` ใน golden eval; Playwright UI E2E; pytest markers offline/live
+
 ---
 
 ## 12. Developer onboarding
@@ -560,6 +573,7 @@ python -m pytest backend/tests/ -q
 1. `AGENTS.md` — สัญญ agent + Phase 1 locked decisions
 2. `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` §4 — **บังคับ** ถ้า implement G–K
 3. Phase doc ที่เกี่ยวข้อง + gate README
+4. ก่อนทดสอบจริง: `knowledge/07-testing/loop-engineering/` + `.\scripts\run-readiness-check.ps1` (หรือสั่ง Cursor skill loop-engineering-qa)
 
 ### โครงสร้างสำคัญ
 

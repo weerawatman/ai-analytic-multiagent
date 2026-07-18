@@ -9,6 +9,7 @@ venv/
 .env
 
 # Local data (production query results, chat, backlog, logs)
+# Includes Loop Engineering raw QA evidence: data/local/qa/loop-engineering/
 data/local/
 data/local/logs/
 

@@ -73,4 +73,5 @@
 - [ ] `PROJECT_OVERVIEW.md` — วันที่/header commit, §3 readiness, §11 remaining work, §15 handover ตรงความจริง
 - [ ] `README.md` — install/run/env ยังถูก (ถ้า phase แตะส่วนนั้น)
 - [ ] `docs/diagrams/SYSTEM_DIAGRAMS.md` — อัปเดต diagram ที่เกี่ยวข้องถ้า phase เปลี่ยน architecture/flows (ระบุ section ที่แตะ เช่น §6–§7); ถ้ายังไม่อัปเดต ให้บันทึก diagram debt ใน phase summary
+- [ ] Loop Engineering (ถ้า phase แตะพฤติกรรมที่ทดสอบได้): อ้าง SCN-* จาก `knowledge/07-testing/loop-engineering/scenario-catalog.md` และลิงก์ run-report/readiness ล่าสุดถ้ามี — QA recommend เท่านั้น ไม่แทน gate/sign-off
 - [ ] ไม่ขัดกันระหว่าง phase doc, gate, overview, summary, diagrams, และ `test_roadmap_conformance.py`

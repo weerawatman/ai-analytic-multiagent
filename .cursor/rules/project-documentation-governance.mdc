@@ -13,6 +13,7 @@ Context docs (read when changing behavior, phases, or gates):
 - `docs/diagrams/SYSTEM_DIAGRAMS.md` — Mermaid flows/architecture (mandatory handover artifact)
 - `phase-summaries/README.md` — per-phase summary template
 - `phase-summaries/phase-{x}.md` — one file per closed/partial phase
+- `knowledge/07-testing/loop-engineering/` — Loop Engineering QA scenarios + sanitized readiness reports
 
 ## Before finishing work
 
@@ -24,6 +25,7 @@ If you changed runtime code, APIs, phases, gates, tests, or verification status:
 4. **Diagrams:** if flows, architecture, agent graph, job kinds, data-source fallback, insight/learning/digest pipelines, or phase readiness changed — update relevant section(s) in `docs/diagrams/SYSTEM_DIAGRAMS.md` in the same change set; note diagram debt if deferred.
 5. **README:** sync install/run/env if those paths changed; link to overview for deep context.
 6. **Phase doc + gate:** G–K work also updates `knowledge/05-architecture/phases/` and `gates/` per roadmap §4.
+7. **Loop Engineering:** if you ran readiness or opened QA defects — write sanitized run-report/readiness under `knowledge/07-testing/loop-engineering/` (QA recommends only; never replaces human gates). Use skill `loop-engineering-qa` when the user asks to test readiness.
 
 ## Before phase handover
 
@@ -32,5 +34,6 @@ If you changed runtime code, APIs, phases, gates, tests, or verification status:
 - [ ] PROJECT_OVERVIEW §3/§11/§15 consistent with summaries
 - [ ] SYSTEM_DIAGRAMS.md — diagrams match real behavior, or diagram debt noted
 - [ ] README run/setup still accurate
+- [ ] Loop Engineering readiness linked if relevant (recommend only — not owner sign-off)
 
 When in doubt, update §11 and state what is **not** production-verified.
