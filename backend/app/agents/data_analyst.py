@@ -156,6 +156,10 @@ CEO feedback:
 Team memory (onboarding baseline — align with this):
 {team_memory_context}
 
+{sql_pattern_context}
+
+{sql_lessons_context}
+
 Data Scientist guidance (hypotheses / approach — follow when writing SQL):
 {analysis_summary}
 
@@ -210,43 +214,64 @@ def _last_user_prompt(state: AgentState) -> str:
     return ""
 
 
-def _classify_sql_error(error: BaseException | str) -> str:
-    """Map an exception (or prior friendly summary) to a retry/PDCA class.
+async def _build_learning_context(theme_id: str, user_prompt: str, source: str) -> tuple[str, str]:
+    """Phase J few-shot patterns + mined lessons for the DA prompt.
 
-    Classes stay coarse on purpose: enough signal for guidance without
-    embedding raw ODBC text into state.sql_error / quality_payload.
+    Both degrade to "" on any error — a down Ollama embedding model or a
+    missing sql_lessons.json must never block SQL generation.
     """
-    text = str(error)
-    lower = text.lower()
-    if isinstance(error, RowCountExceeded) or "เกินเกณฑ์" in text or "exceeds threshold" in lower:
-        return "row_count"
-    if (
-        "Invalid column name" in text
-        or "42S22" in text
-        or "ชื่อคอลัมน์" in text
-        or "42703" in text  # Postgres undefined_column SQLSTATE
-        or ("column" in lower and "does not exist" in lower)  # psycopg2 UndefinedColumn text
-    ):
-        return "invalid_column"
-    if (
-        "timeout" in lower
-        or "timed out" in lower
-        or "HYT00" in text
-        or "เกินเวลา" in text
-        or "57014" in text  # Postgres query_canceled (statement_timeout)
-    ):
-        return "timeout"
-    if (
-        "connection" in lower
-        or "login failed" in lower
-        or "could not connect" in lower  # psycopg2 OperationalError
-        or "08006" in text  # Postgres connection_failure SQLSTATE
-        or "08001" in text
-        or "08S01" in text
-        or "เชื่อมต่อ" in text
-    ):
-        return "connection"
-    return "generic"
+    settings = get_settings()
+    pattern_ctx = ""
+    if settings.sql_pattern_context_enabled and user_prompt and source != "offline":
+        try:
+            from backend.app.services.sql_pattern_store import (
+                format_pattern_context,
+                get_similar_patterns,
+            )
+
+            patterns = await get_similar_patterns(user_prompt, dialect=source, theme_id=theme_id or None)
+            pattern_ctx = format_pattern_context(patterns)
+        except Exception:
+            logger.warning("sql_pattern_context unavailable this turn", exc_info=True)
+
+    lessons_ctx = ""
+    if settings.sql_lessons_in_prompt:
+        try:
+            from backend.app.services.lesson_miner import format_lessons_context
+
+            lessons_ctx = format_lessons_context()
+        except Exception:
+            logger.warning("sql_lessons_context unavailable this turn", exc_info=True)
+    return pattern_ctx, lessons_ctx
+
+
+def _record_pattern_after_success(theme_id: str, user_prompt: str, sql: str, source: str, state: AgentState) -> None:
+    """Best-effort — never raises, never blocks a successful DA return.
+
+    Known limitation (Phase J scope): message_id/job_id aren't threaded
+    through AgentState yet, so the retrieval-time "never 👎'd" filter in
+    sql_pattern_store can only match on session_id today — full filtering
+    needs job_id/message_id plumbing, deferred to a later phase.
+    """
+    try:
+        from backend.app.services.sql_pattern_store import record_pattern
+
+        record_pattern(
+            theme_id=theme_id or None,
+            question=user_prompt,
+            sql=sql,
+            dialect=source,
+            session_id=state.thread_id or None,
+        )
+    except Exception:
+        logger.warning("sql_pattern_store: record skipped", exc_info=True)
+
+
+# Classification logic lives in sql_error_classifier.py (Phase J) so
+# services/lesson_miner.py can reuse it without importing app.agents. Kept
+# importable under this name — existing tests import _classify_sql_error
+# directly from this module.
+from backend.app.services.sql_error_classifier import classify_sql_error as _classify_sql_error
 
 
 def _retry_guidance(error_class: str, error: str) -> str:
@@ -404,6 +429,7 @@ async def data_analyst_node(state: AgentState) -> dict:
                 error_class=_classify_sql_error(state.sql_error),
                 mode=state.mode,
             )
+            _record_pattern_after_success(theme_id, user_prompt, sql, used_source, state)
             return {
                 "messages": [AIMessage(content=content, name="data_analyst")],
                 "current_agent": "data_analyst",
@@ -430,6 +456,9 @@ async def data_analyst_node(state: AgentState) -> dict:
             "step_errors": step_errors,
         }
 
+    sql_pattern_context, sql_lessons_context = await _build_learning_context(
+        theme_id, user_prompt, source
+    )
     messages = [
         {
             "role": "system",
@@ -443,6 +472,8 @@ async def data_analyst_node(state: AgentState) -> dict:
                 sql_reference_context=state.sql_reference_context or "(none)",
                 ceo_feedback_context=state.ceo_feedback_context or "(none)",
                 team_memory_context=state.team_memory_context or "(none)",
+                sql_pattern_context=sql_pattern_context or "(none)",
+                sql_lessons_context=sql_lessons_context or "(none)",
                 analysis_summary=state.analysis_summary or "(none)",
                 trusted_layer=trusted_text,
                 schema_info=state.schema_info,
@@ -477,6 +508,9 @@ async def data_analyst_node(state: AgentState) -> dict:
         try:
             result = await _execute_sql_with_guard(sql, state.mode)
             content += f"\n\nQUERY_RESULT:\n{result.get('rows', [])}"
+            _record_pattern_after_success(
+                theme_id, user_prompt, sql, result.get("source", source), state
+            )
             return {
                 "messages": [AIMessage(content=content, name="data_analyst")],
                 "current_agent": "data_analyst",

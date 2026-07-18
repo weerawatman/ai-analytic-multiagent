@@ -68,7 +68,7 @@
 | INV-4 | `[AUTO]` | `insight_pipeline.py` ต้องเรียก `validate_narrative_numbers` — narrative ทุกชิ้นผ่าน numeric validator (หลักการใหญ่ข้อ 1) |
 | INV-5 | `[AUTO]` | `eval_service.py` ห้าม import `app.core.llm` / `anthropic` — grading เป็น deterministic, **LLM เป็นผู้ถูกสอบ ไม่ใช่ผู้ให้คะแนน** |
 | INV-6 | `[AUTO]` | `scheduler_service.py` ต้อง enqueue งานผ่าน `job_runner` และห้าม import threading/multiprocessing/subprocess — **ไม่มี execution path คู่ขนานนอก job runner** |
-| INV-7 | `[AUTO]` | services กลุ่ม analytics (`snapshot_store`, `snapshot_refresh_service`, `insight_store`, `insight_pipeline`, `scheduler_service`) ห้ามมี string `app.db` — เขียนเฉพาะ `analytics.db` |
+| INV-7 | `[AUTO]` | services กลุ่ม analytics (`snapshot_store`, `snapshot_refresh_service`, `insight_store`, `insight_pipeline`, `scheduler_service`, `embedding_service`, `sql_pattern_store`, `lesson_miner`, `insight_ranker` — 4 รายการหลังเพิ่มใน Phase J) ห้ามมี string `app.db` — เขียนเฉพาะ `analytics.db`; การอ่านข้อมูล `answer_ratings` (เช่น กรอง "ไม่เคยโดน 👎" ใน `sql_pattern_store`) ต้องผ่าน read-only helper ที่ `chat_store.py` เปิดให้ (เช่น `get_downvoted_refs()`) ไม่ใช่เปิด connection ตรงไปที่ `app.db` เอง |
 | INV-8 | `[AUTO]`+`[REVIEW]` | `insight_ranker.py` ต้องประกาศ `MIN_LABELS_FOR_ML = 100` และ `MIN_AUC_GATE = 0.6` `[AUTO]`; การสลับ heuristic→ML และผล AUC ทุกรอบ retrain ต้องถูก log เสมอ ห้ามสลับเงียบ `[REVIEW]` |
 | INV-9 | `[AUTO]` | services ใหม่ทุกตัวของ roadmap นี้ห้าม import `psycopg2`/`pyodbc` ตรง — SQL ทุก path ผ่าน `run_sql`/`run_sql_async` ของ `fabric_sql.py` เพื่อให้ sql_guard + row-count guard + provenance ทำงานเสมอ |
 | INV-10 | `[REVIEW]` | ทุก insight/คำตอบติด provenance label (🟦 fabric / 🟨 postgres / ⚪ offline) — สอดคล้อง Phase F ไม่มี fallback เงียบ |

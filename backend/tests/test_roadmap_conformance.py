@@ -81,6 +81,13 @@ ANALYTICS_DB_ONLY_SERVICES = (
     "insight_store.py",
     "insight_pipeline.py",
     "scheduler_service.py",
+    # Phase J additions (2026-07-18) — strengthens INV-7 to match the storage
+    # table in roadmap §4.2, which already places sql_patterns/embeddings in
+    # analytics.db; not a weakening, see phase-j-learning-loops.md Deviation Log.
+    "embedding_service.py",
+    "sql_pattern_store.py",
+    "lesson_miner.py",
+    "insight_ranker.py",
 )
 
 

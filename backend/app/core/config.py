@@ -99,6 +99,18 @@ class Settings(BaseSettings):
     # Wall-clock cap for one full pipeline run (refresh + detectors + narrate top-K)
     insight_pipeline_max_seconds: int = 1800
 
+    # Phase J — learning loops
+    ollama_embed_model: str = "nomic-embed-text"
+    # Semantic (embedding) retrieval for CEO feedback context — off by default,
+    # adds an Ollama round-trip per question; falls back to char-budget
+    # truncation on any embedding error.
+    embedding_context_enabled: bool = False
+    # Few-shot SQL patterns in the DA prompt — off by default (extra Ollama
+    # round-trip per question, same reasoning as embedding_context_enabled)
+    sql_pattern_context_enabled: bool = False
+    # Mined SQL lessons in the DA prompt — on by default (cheap static file read)
+    sql_lessons_in_prompt: bool = True
+
     # Anthropic external consultant (Claude)
     anthropic_api_key: str = ""
     consultant_enabled: bool = False

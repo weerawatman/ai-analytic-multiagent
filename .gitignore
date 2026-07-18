@@ -1,13 +1,16 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyc
 *.egg-info/
+.pytest_cache/
 .venv/
 venv/
 .env
 
-# Local data (production query results, chat, backlog)
+# Local data (production query results, chat, backlog, logs)
 data/local/
+data/local/logs/
 
 # Agent overrides (branch-scoped)
 AGENTS.override.md

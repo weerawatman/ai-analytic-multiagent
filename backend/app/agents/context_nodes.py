@@ -4,7 +4,7 @@ import asyncio
 
 from backend.app.agents.state import AgentState
 from backend.app.services.discovery_service import format_schema_context_pack
-from backend.app.services.feedback_store import format_feedback_context
+from backend.app.services.feedback_store import format_feedback_context, format_feedback_entries, load_feedback
 from backend.app.services.knowledge_store import format_knowledge_context
 from backend.app.services.sql_reference_store import (
     format_sql_reference_context,
@@ -22,19 +22,57 @@ def _table_refs_for_theme(theme_id: str, discovery_text: str) -> list[str]:
     return re.findall(r"^##\s+(\S+)", discovery_text, re.MULTILINE)
 
 
+def _last_human_question(state: AgentState) -> str:
+    for m in reversed(state.messages or []):
+        if getattr(m, "type", "") == "human":
+            return str(getattr(m, "content", ""))
+    return ""
+
+
+def _feedback_context_for(theme_id: str, state: AgentState, settings) -> str:
+    """CEO feedback context — semantic top-k when enabled, else chronological
+    last-10 (Phase J: settings.embedding_context_enabled, default False).
+
+    Any embedding failure falls back to the pre-Phase-J chronological path —
+    never let a down/unpulled embedding model change chat behavior.
+    """
+    if not theme_id or not settings.embedding_context_enabled:
+        return format_feedback_context(theme_id)
+    question = _last_human_question(state)
+    entries = load_feedback(theme_id).get("entries", [])
+    if not question or len(entries) <= 5:
+        return format_feedback_context(theme_id)
+    from backend.app.services.embedding_service import select_relevant
+
+    try:
+        selected = asyncio.run(
+            select_relevant(
+                question,
+                entries,
+                k=5,
+                namespace=f"feedback:{theme_id}",
+                id_key="id",
+                text_key="comment",
+            )
+        )
+    except Exception:
+        selected = entries[-10:]
+    return format_feedback_entries(selected)
+
+
 def build_phase2_context(state: AgentState) -> dict[str, str]:
+    from backend.app.core.config import get_settings
+
+    settings = get_settings()
     theme_id = state.theme_id or ""
     discovery = format_schema_context_pack(theme_id or None)
     knowledge = format_knowledge_context(theme=state.theme or theme_id or None)
-    feedback = format_feedback_context(theme_id or None)
+    feedback = _feedback_context_for(theme_id, state, settings)
     table_refs = _table_refs_for_theme(theme_id, discovery)
     sql_ref = format_sql_reference_context(table_refs, theme_id=theme_id or None)
     team_memory = format_team_memory_context(theme_id or None)
     metric_registry_ctx = ""
     analytics_ctx = ""
-    from backend.app.core.config import get_settings
-
-    settings = get_settings()
     if settings.metric_registry_in_prompt:
         from backend.app.services.metric_registry import format_metric_registry_context
 

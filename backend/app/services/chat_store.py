@@ -254,3 +254,18 @@ def count_answer_ratings() -> int:
     with get_connection() as conn:
         row = conn.execute("SELECT COUNT(*) AS n FROM answer_ratings").fetchone()
         return int(row["n"] if row else 0)
+
+
+def get_downvoted_refs() -> set[tuple[str | None, int | None, str | None]]:
+    """(session_id, message_id, job_id) triples that got a 👎 (Phase J).
+
+    Read-only helper so services outside app.db (e.g. sql_pattern_store.py,
+    which lives in analytics.db) can filter without opening a second
+    connection to this database themselves — chat_store stays the sole
+    owner of app.db access (INV-7 spirit).
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT session_id, message_id, job_id FROM answer_ratings WHERE rating = 'down'"
+        ).fetchall()
+    return {(r["session_id"], r["message_id"], r["job_id"]) for r in rows}

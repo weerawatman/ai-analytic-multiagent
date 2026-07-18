@@ -230,11 +230,15 @@ python -m pytest backend/tests/ -q
 # Phase G — Metric Registry seed + golden-question harness baseline
 .\scripts\seed-metric-registry.ps1
 .\scripts\run-golden-eval.ps1 --harness-baseline --write-gate
+
+# Phase J — mine SQL lessons from PDCA failure log (manual; no job kind yet)
+$env:PYTHONPATH = "."
+.\.venv\Scripts\python.exe scripts\mine_lessons.py
 ```
 
 Owner sign-off: `knowledge/07-testing/sign-off.md` (Phase 1) · `knowledge/07-testing/phase-2-sign-off.md` (Phase 2)
 
-Phase G→K roadmap: `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` · Phase G handoff: `phases/phase-g-foundation.md` · Phase H: `phases/phase-h-analytics-engine.md` · Phase I: `phases/phase-i-proactive-insights.md`
+Phase G→K roadmap: `knowledge/05-architecture/phases/phase-g-to-k-grand-roadmap.md` · Phase G handoff: `phases/phase-g-foundation.md` · Phase H: `phases/phase-h-analytics-engine.md` · Phase I: `phases/phase-i-proactive-insights.md` · Phase J: `phases/phase-j-learning-loops.md`
 
 ---
 
@@ -255,7 +259,9 @@ Scratch files under `data/local/local_data/` (reserved for future parquet / job-
 | `data/local/team_memory/` | Onboarding baseline |
 | `data/local/knowledge/` | Glossary, discovery, SQL reference, **metric_registry.json** |
 | `data/local/eval/` | Golden questions + eval results (Phase G3 baseline) |
-| `data/local/analytics/` | Metric snapshots (`analytics.db`) — Phase H |
+| `data/local/analytics/` | Metric snapshots (`analytics.db`) — Phase H; also `sql_patterns` / embeddings cache (Phase J) |
+| `data/local/knowledge/sql_lessons.json` | Mined SQL lessons (Phase J) — keep; regenerate via `scripts/mine_lessons.py` |
+| `data/local/models/` | `insight_ranker.pkl` (Phase J) + `approved/` reserved for Phase E |
 | `data/local/models/approved/` | Phase E promoted models (convention reserved now) |
 
 ### Windows Task Scheduler (optional)
@@ -346,8 +352,8 @@ flowchart TB
 |---|---|
 | **G** (เสร็จฝั่งโค้ด) | มาตรฐาน + ไม้บรรทัดของ Hub: metric registry, eval baseline, heartbeat UX, feedback capture |
 | **H** (เสร็จฝั่งโค้ด) | สมองสถิติของ Hub: อ่านข้อมูลเองด้วยคณิตศาสตร์จริง ไม่ใช่ prompt text |
-| **I** | Hub ทำงาน proactive — ตื่นเช้ามาเจอ "เมื่อคืนระบบพบอะไร" โดยไม่ต้องถาม |
-| **J** | Hub เรียนรู้จาก feedback ของทุก Spoke — เก่งขึ้นแบบวัดได้เทียบ baseline |
+| **I** (เสร็จฝั่งโค้ด) | Hub ทำงาน proactive — ตื่นเช้ามาเจอ "เมื่อคืนระบบพบอะไร" โดยไม่ต้องถาม |
+| **J** (เสร็จฝั่งโค้ด) | Hub เรียนรู้จาก feedback — SQL patterns, lessons, semantic retrieval, insight ranker (ML dormant จน ≥100 labels) |
 | **K** | World-class layer: board digest, role curriculum — Hub เป็นทีมมืออาชีพที่พัฒนาตัวเอง |
 
 ---

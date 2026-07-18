@@ -59,16 +59,26 @@ def add_feedback(
     return save_feedback(theme_id, data)
 
 
+def format_feedback_entries(entries: list[dict[str, Any]]) -> str:
+    """Render a (already-selected) list of feedback entries as prompt text.
+
+    Shared by the default chronological path and the Phase J semantic-
+    retrieval path (`context_nodes.build_phase2_context`) so both produce
+    identically-shaped output.
+    """
+    if not entries:
+        return ""
+    lines = ["## CEO Feedback (apply to this session)"]
+    for e in entries:
+        lines.append(
+            f"- [{e.get('action')}] {e.get('role')}: {e.get('comment', '')}"
+        )
+    return "\n".join(lines)
+
+
 def format_feedback_context(theme_id: str | None) -> str:
     if not theme_id:
         return ""
     data = load_feedback(theme_id)
     entries = data.get("entries", [])
-    if not entries:
-        return ""
-    lines = ["## CEO Feedback (apply to this session)"]
-    for e in entries[-10:]:
-        lines.append(
-            f"- [{e.get('action')}] {e.get('role')}: {e.get('comment', '')}"
-        )
-    return "\n".join(lines)
+    return format_feedback_entries(entries[-10:])

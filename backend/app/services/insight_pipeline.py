@@ -313,6 +313,13 @@ def _score_candidates(candidates: list[dict[str, Any]], *, db_path: Any) -> list
         # Near-zero novelty means an identical insight published very recently
         # — quiet it immediately (lifecycle: suppressed via novelty dedupe).
         c["status"] = "suppressed" if novelty < 0.05 else "scored"
+
+    # Phase J: overrides rank_score with the trained model's prediction once
+    # >=100 real labels exist and it clears the AUC gate; a pure no-op today
+    # (0 labels) — heuristic rank_score above is untouched.
+    from backend.app.services.insight_ranker import apply_ranker
+
+    candidates = apply_ranker(candidates)
     candidates.sort(key=lambda c: c["rank_score"], reverse=True)
     return candidates
 

@@ -24,3 +24,8 @@ scipy==1.18.0
 #   pip install statsmodels==0.14.6
 # Phase I proactive insight pipeline scheduler (pure Python, no C extension — cp314 safe)
 apscheduler==3.11.0
+# Phase J insight ranker (cp314-win_amd64 wheels verified 2026-07-18) — required,
+# not import-guarded like statsmodels: roadmap §9 "เพิ่ม scikit-learn ตอนนี้"
+scikit-learn==1.9.0
+joblib>=1.4.0
+threadpoolctl>=3.5.0

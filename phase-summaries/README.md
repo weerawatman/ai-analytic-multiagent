@@ -19,6 +19,7 @@
 
 | ไฟล์ | Phase |
 |------|--------|
+| [phase-j.md](phase-j.md) | Phase J — Learning Loops |
 | [phase-i.md](phase-i.md) | Phase I — Proactive Insight Pipeline |
 | [phase-h.md](phase-h.md) | Phase H — Analytics Engine |
 | [phase-g.md](phase-g.md) | Phase G — Foundation |

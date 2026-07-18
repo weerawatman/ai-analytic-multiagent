@@ -35,6 +35,6 @@
 
 ## หมายเหตุ
 
-- Phase J/K (`insight_ranker`, `embedding_service`, `sql_pattern_store`, `lesson_miner`, `digest_service`) ยังไม่ทำ — INV-8 ยัง skip ตามคาด
-- Lazy narrate-on-first-view สำหรับ candidate นอก top-K ยังไม่ทำ UI (เก็บเป็น `status="scored"` เฉยๆ ใน DB รอ Phase J/K)
-- Auto-สร้าง golden-question จาก feedback `label="wrong"` ยังไม่ทำ (Phase J learning loop)
+- Phase J (`insight_ranker`, `embedding_service`, `sql_pattern_store`, `lesson_miner`) — ทำแล้ว ดู [phase-j.md](phase-j.md); Phase K ยังไม่เริ่ม
+- Lazy narrate-on-first-view สำหรับ candidate นอก top-K ยังไม่ทำ UI (เก็บเป็น `status="scored"` เฉยๆ ใน DB)
+- Auto-สร้าง golden-question จาก feedback `label="wrong"` ยังไม่ทำ (เลื่อนไป K ตาม Phase J Out)
