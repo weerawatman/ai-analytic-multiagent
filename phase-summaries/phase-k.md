@@ -25,13 +25,14 @@
 ## เกตที่ค้าง
 
 - Live §10 metrics (ดู K-done.md)
-- Owner commit/push
 
 ## commits ที่เกี่ยวข้อง
 
-- N/A จนกว่า owner จะสั่ง commit/push
+- `9a65a20` — `feat(phase-k): board digest, curriculum study job, knowledge aggregate, eval trend`
+- pushed: 2026-07-18 → origin/master
 
 ## หมายเหตุ
 
 - Roadmap G→K **ครบฝั่งโค้ด** แล้ว (G–K); ไม่ invent phase ถัดไป
-- ไม่ commit/push ใน session นี้ตามคำสั่ง
+- commit/push แล้ว: `9a65a20` (+ docs summary commit ถัดไป)
+
