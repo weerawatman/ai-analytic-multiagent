@@ -75,7 +75,31 @@ Local **AI Data Team** (LangGraph multi-agent) for **Microsoft Fabric Data Wareh
 
 ## Run (every time you start work)
 
-Open **two terminals** from the project root:
+**คำสั่งเดียว (แนะนำ)** — จาก root โปรเจกต์:
+
+```powershell
+.\scripts\start.ps1
+```
+
+เริ่ม FastAPI + Streamlit ในพื้นหลัง ตรวจ Ollama ตาม `.env` เปิดเบราว์เซอร์ไป UI อัตโนมัติ
+
+| Switch | ความหมาย |
+|--------|----------|
+| `-Status` | ดูสถานะเท่านั้น ไม่เริ่มบริการ |
+| `-NoBrowser` | ไม่เปิดเบราว์เซอร์ |
+| `-SkipOllama` | ข้ามการตรวจ Ollama |
+| `-Restart` | หยุดบริการที่สคริปต์เริ่มไว้ แล้วเริ่มใหม่ |
+| `-Dev` | hot-reload backend (save ไฟล์ backend จะฆ่างานที่กำลังรัน) |
+
+หยุดบริการที่ `start.ps1` เริ่ม:
+
+```powershell
+.\scripts\stop.ps1
+```
+
+Launcher logs + PID: `data/local/logs/` (gitignored) — รวม `launcher-*.out.log` และ `backend.log` จากแอป
+
+**ทางเลือก — สองเทอร์มินัล (พัฒนา/debug):**
 
 **Terminal 1 — Backend**
 ```powershell
@@ -424,6 +448,8 @@ flowchart TB
 │   ├── templates/        # backlog + semantic JSON templates (committed)
 │   └── local/            # runtime data — gitignored
 ├── scripts/
+│   ├── start.ps1             # one-command launcher (backend + frontend + Ollama check)
+│   ├── stop.ps1              # stop services started by start.ps1
 │   ├── run-backend.ps1
 │   ├── run-frontend.ps1
 │   ├── setup-ollama-models.ps1
